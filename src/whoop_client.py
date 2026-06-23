@@ -16,6 +16,7 @@ API reference: https://developer.whoop.com/api
 
 import os
 import json
+import secrets
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlencode, urlparse, parse_qs
@@ -28,7 +29,7 @@ load_dotenv()
 
 WHOOP_AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth"
 WHOOP_TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
-WHOOP_API_BASE = "https://api.prod.whoop.com/developer/v1"
+WHOOP_API_BASE = "https://api.prod.whoop.com/developer/v2"
 
 # Scopes tell Whoop what data our app is allowed to read.
 # We're requesting the minimum we need — good security practice.
@@ -47,10 +48,11 @@ class _CallbackHandler(BaseHTTPRequestHandler):
     this handler captures the code and stores it.
     """
     code = None
+    expected_state = None
 
     def do_GET(self):
         params = parse_qs(urlparse(self.path).query)
-        if "code" in params:
+        if "code" in params and params.get("state", [None])[0] == _CallbackHandler.expected_state:
             _CallbackHandler.code = params["code"][0]
             self.send_response(200)
             self.end_headers()
@@ -71,11 +73,17 @@ def _get_new_token(client_id: str, client_secret: str, redirect_uri: str) -> dic
     Only needed on first run or when the refresh token expires.
     """
     # Step 1: Build the URL that sends the user to Whoop's login page
+    # The state parameter is a random string we generate and verify on return —
+    # it prevents CSRF attacks (someone tricking our server into accepting a fake callback)
+    state = secrets.token_urlsafe(16)
+    _CallbackHandler.expected_state = state
+
     auth_params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": SCOPES,
+        "state": state,
     }
     auth_url = f"{WHOOP_AUTH_URL}?{urlencode(auth_params)}"
 

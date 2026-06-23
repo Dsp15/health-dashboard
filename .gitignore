@@ -1,5 +1,6 @@
 # Secrets — never commit these
 .env
+.whoop_token.json
 
 # Local data files
 data/
