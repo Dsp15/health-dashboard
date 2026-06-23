@@ -1,0 +1,23 @@
+# Secrets — never commit these
+.env
+
+# Local data files
+data/
+
+# Python virtual environment
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Garmin auth tokens (contain your login session)
+.garminconnect/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
