@@ -33,7 +33,7 @@ WHOOP_API_BASE = "https://api.prod.whoop.com/developer/v2"
 
 # Scopes tell Whoop what data our app is allowed to read.
 # We're requesting the minimum we need — good security practice.
-SCOPES = "read:recovery read:sleep read:workout read:profile read:body_measurement offline"
+SCOPES = "read:recovery read:cycles read:sleep read:workout read:profile read:body_measurement offline"
 
 # Where to store the token so we don't re-authenticate every time
 TOKEN_FILE = ".whoop_token.json"
@@ -204,6 +204,36 @@ class WhoopClient:
         response.raise_for_status()
         return response.json()
 
+    def _get_all(self, endpoint: str, start: str = None, end: str = None) -> list:
+        """
+        Fetch ALL records from a paginated endpoint by following next_token pages.
+
+        The Whoop API returns max 25 records per page. If there are more, it
+        includes a 'next_token' in the response. We keep requesting the next page
+        until there are no more records. This is called pagination.
+
+        Think of it like a book — instead of getting all pages at once,
+        we get one chapter at a time until we reach the end.
+        """
+        records = []
+        params = {"limit": 25}
+        if start:
+            params["start"] = start
+        if end:
+            params["end"] = end
+
+        while True:
+            response = self._get(endpoint, params=params)
+            records.extend(response.get("records", []))
+
+            next_token = response.get("next_token")
+            if not next_token:
+                break  # No more pages — we're done
+
+            params["nextToken"] = next_token  # Ask for the next page
+
+        return records
+
     # ── Data Methods ───────────────────────────────────────────────────────────
 
     def get_profile(self) -> dict:
@@ -215,17 +245,7 @@ class WhoopClient:
         return self._get("/user/measurement/body")
 
     def get_recovery_collection(self, limit: int = 25, start: str = None, end: str = None) -> dict:
-        """
-        Get a list of recovery records.
-
-        Recovery is Whoop's daily readiness score (0-100%) based on HRV,
-        resting heart rate, and sleep performance.
-
-        Args:
-            limit: Number of records to return (max 25 per page)
-            start: ISO 8601 start date, e.g. "2024-01-01T00:00:00.000Z"
-            end:   ISO 8601 end date
-        """
+        """Get a page of recovery records. Use get_all_recovery() to fetch everything."""
         params = {"limit": limit}
         if start:
             params["start"] = start
@@ -234,12 +254,7 @@ class WhoopClient:
         return self._get("/recovery", params=params)
 
     def get_sleep_collection(self, limit: int = 25, start: str = None, end: str = None) -> dict:
-        """
-        Get a list of sleep records.
-
-        Each record includes total sleep duration, sleep stages (light, REM, deep),
-        disturbances, and a sleep performance score.
-        """
+        """Get a page of sleep records. Use get_all_sleep() to fetch everything."""
         params = {"limit": limit}
         if start:
             params["start"] = start
@@ -248,11 +263,7 @@ class WhoopClient:
         return self._get("/activity/sleep", params=params)
 
     def get_workout_collection(self, limit: int = 25, start: str = None, end: str = None) -> dict:
-        """
-        Get a list of workout records.
-
-        Each record includes sport type, duration, strain score, and heart rate data.
-        """
+        """Get a page of workout records. Use get_all_workouts() to fetch everything."""
         params = {"limit": limit}
         if start:
             params["start"] = start
@@ -261,15 +272,28 @@ class WhoopClient:
         return self._get("/activity/workout", params=params)
 
     def get_cycle_collection(self, limit: int = 25, start: str = None, end: str = None) -> dict:
-        """
-        Get a list of physiological cycles (Whoop's basic unit of a "day").
-
-        A cycle starts when you wake up and ends the next time you wake up.
-        Each cycle has an associated strain and recovery.
-        """
+        """Get a page of cycle records. Use get_all_cycles() to fetch everything."""
         params = {"limit": limit}
         if start:
             params["start"] = start
         if end:
             params["end"] = end
         return self._get("/cycle", params=params)
+
+    # ── Paginated "get all" methods ────────────────────────────────────────────
+
+    def get_all_sleep(self, start: str = None, end: str = None) -> list:
+        """Fetch all sleep records across all pages for a date range."""
+        return self._get_all("/activity/sleep", start=start, end=end)
+
+    def get_all_recovery(self, start: str = None, end: str = None) -> list:
+        """Fetch all recovery records across all pages for a date range."""
+        return self._get_all("/recovery", start=start, end=end)
+
+    def get_all_cycles(self, start: str = None, end: str = None) -> list:
+        """Fetch all cycle records across all pages for a date range."""
+        return self._get_all("/cycle", start=start, end=end)
+
+    def get_all_workouts(self, start: str = None, end: str = None) -> list:
+        """Fetch all workout records across all pages for a date range."""
+        return self._get_all("/activity/workout", start=start, end=end)
