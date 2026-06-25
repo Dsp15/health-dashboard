@@ -1,6 +1,7 @@
 # Secrets — never commit these
 .env
 .whoop_token.json
+.garminconnect/
 
 # Local data files
 data/
