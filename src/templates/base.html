@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Health Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+    <!-- ── Navigation Bar ─────────────────────────────────────────── -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="nav-icon">⚡</span>
+            Health Dashboard
+        </div>
+
+        <div class="nav-links">
+            <a href="/daily"    class="nav-link {% if request.path == '/daily'    %}active{% endif %}">Daily Health</a>
+            <a href="/training" class="nav-link {% if request.path == '/training' %}active{% endif %}">Training</a>
+        </div>
+
+        <div class="nav-sync">
+            <div class="sync-indicator">
+                <span class="sync-dot" id="syncDot"></span>
+                <span class="sync-label" id="syncLabel">Connecting...</span>
+            </div>
+            <button class="sync-btn" id="syncBtn" onclick="requestSync()">
+                Sync Now
+            </button>
+        </div>
+    </nav>
+
+    <!-- ── Page Content ───────────────────────────────────────────── -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- ── Scripts ────────────────────────────────────────────────── -->
+    <!-- Socket.IO — enables WebSocket connection to Flask -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <!-- Chart.js — charting library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+    <script>
+        // ── WebSocket Setup ──────────────────────────────────────────
+        // This code runs on every page. It connects to the Flask server
+        // via WebSocket and handles sync events.
+
+        const socket = io();
+
+        socket.on("connect", () => {
+            setSyncStatus("connected", "Live");
+        });
+
+        socket.on("disconnect", () => {
+            setSyncStatus("disconnected", "Offline");
+        });
+
+        socket.on("sync_started", (data) => {
+            setSyncStatus("syncing", "Syncing...");
+            document.getElementById("syncBtn").disabled = true;
+        });
+
+        socket.on("sync_complete", (data) => {
+            if (data.success) {
+                setSyncStatus("connected", "Just synced ✓");
+                // Reload charts without refreshing the page
+                if (typeof loadCharts === "function") loadCharts();
+            } else {
+                setSyncStatus("error", "Sync failed");
+                console.error("Sync error:", data.message);
+            }
+            document.getElementById("syncBtn").disabled = false;
+        });
+
+        function requestSync() {
+            socket.emit("request_sync");
+        }
+
+        function setSyncStatus(state, label) {
+            const dot   = document.getElementById("syncDot");
+            const text  = document.getElementById("syncLabel");
+            dot.className  = `sync-dot ${state}`;
+            text.textContent = label;
+        }
+
+        // ── Chart.js Global Defaults ─────────────────────────────────
+        // Set dark theme defaults so every chart looks consistent
+        Chart.defaults.color = "#8b949e";
+        Chart.defaults.borderColor = "#21262d";
+        Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+        Chart.defaults.font.size = 12;
+
+        // Utility: format "2026-06-14" → "Jun 14"
+        function fmtDate(iso) {
+            if (!iso) return "";
+            const d = new Date(iso + "T12:00:00");
+            return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        }
+
+        // Utility: color by recovery score
+        function recoveryColor(score) {
+            if (score >= 67) return "#3fb950";   // green
+            if (score >= 34) return "#d29922";   // yellow
+            return "#f85149";                     // red
+        }
+
+        // Utility: color array for a list of scores
+        function recoveryColors(scores) {
+            return scores.map(recoveryColor);
+        }
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

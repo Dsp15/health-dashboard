@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Daily Health — Health Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- ── Stat Cards ─────────────────────────────────────────────────── -->
+<section class="stat-grid">
+
+    <div class="stat-card" id="card-recovery">
+        <div class="stat-label">Recovery</div>
+        <div class="stat-value" id="stat-recovery">--</div>
+        <div class="stat-sub">Whoop score</div>
+        <div class="stat-bar-track">
+            <div class="stat-bar-fill" id="bar-recovery"></div>
+        </div>
+    </div>
+
+    <div class="stat-card" id="card-hrv">
+        <div class="stat-label">HRV</div>
+        <div class="stat-value" id="stat-hrv">--</div>
+        <div class="stat-sub">rMSSD (ms)</div>
+    </div>
+
+    <div class="stat-card" id="card-hr">
+        <div class="stat-label">Resting HR</div>
+        <div class="stat-value" id="stat-hr">--</div>
+        <div class="stat-sub">bpm</div>
+    </div>
+
+    <div class="stat-card" id="card-sleep">
+        <div class="stat-label">Sleep</div>
+        <div class="stat-value" id="stat-sleep">--</div>
+        <div class="stat-sub">hours in bed</div>
+    </div>
+
+    <div class="stat-card" id="card-sleep-perf">
+        <div class="stat-label">Sleep Score</div>
+        <div class="stat-value" id="stat-sleep-perf">--</div>
+        <div class="stat-sub">performance %</div>
+    </div>
+
+    <div class="stat-card" id="card-bedtime">
+        <div class="stat-label">Bedtime</div>
+        <div class="stat-value" id="stat-bedtime">--</div>
+        <div class="stat-sub">last night</div>
+    </div>
+
+</section>
+
+<!-- ── Charts ─────────────────────────────────────────────────────── -->
+<section class="chart-grid">
+
+    <!-- Recovery Trend -->
+    <div class="chart-card chart-wide">
+        <div class="chart-header">
+            <h2 class="chart-title">Recovery Score</h2>
+            <div class="chart-legend">
+                <span class="legend-dot green"></span> Green (67+)
+                <span class="legend-dot yellow"></span> Yellow (34–66)
+                <span class="legend-dot red"></span> Red (&lt;34)
+            </div>
+        </div>
+        <canvas id="chartRecovery"></canvas>
+    </div>
+
+    <!-- HRV Trend -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <h2 class="chart-title">HRV Trend</h2>
+            <span class="chart-sub">rMSSD in milliseconds</span>
+        </div>
+        <canvas id="chartHRV"></canvas>
+    </div>
+
+    <!-- Resting HR Trend -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <h2 class="chart-title">Resting Heart Rate</h2>
+            <span class="chart-sub">beats per minute</span>
+        </div>
+        <canvas id="chartRestingHR"></canvas>
+    </div>
+
+    <!-- Sleep Stages -->
+    <div class="chart-card chart-wide">
+        <div class="chart-header">
+            <h2 class="chart-title">Sleep Breakdown</h2>
+            <div class="chart-legend">
+                <span class="legend-dot blue"></span> Light
+                <span class="legend-dot purple"></span> REM
+                <span class="legend-dot green"></span> Deep
+                <span class="legend-dot grey"></span> Awake
+            </div>
+        </div>
+        <canvas id="chartSleep"></canvas>
+    </div>
+
+    <!-- Sleep Performance -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <h2 class="chart-title">Sleep Performance</h2>
+            <span class="chart-sub">Whoop sleep score %</span>
+        </div>
+        <canvas id="chartSleepPerf"></canvas>
+    </div>
+
+    <!-- Bedtime -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <h2 class="chart-title">Bedtime</h2>
+            <span class="chart-sub">What time you fell asleep</span>
+        </div>
+        <canvas id="chartBedtime"></canvas>
+    </div>
+
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='daily.js') }}"></script>
+{% endblock %}

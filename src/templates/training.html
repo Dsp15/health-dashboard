@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Training — Health Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- ── Stat Cards ─────────────────────────────────────────────────── -->
+<section class="stat-grid">
+
+    <div class="stat-card">
+        <div class="stat-label">Total Sessions</div>
+        <div class="stat-value" id="stat-sessions">--</div>
+        <div class="stat-sub">since April 2026</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Total Hours</div>
+        <div class="stat-value" id="stat-hours">--</div>
+        <div class="stat-sub">training volume</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Avg Recovery</div>
+        <div class="stat-value" id="stat-avg-recovery">--</div>
+        <div class="stat-sub">after training days</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Half Ironman</div>
+        <div class="stat-value accent">Jun 14</div>
+        <div class="stat-sub">4h 33m · multisport</div>
+    </div>
+
+</section>
+
+<!-- ── Charts ─────────────────────────────────────────────────────── -->
+<section class="chart-grid">
+
+    <!-- Weekly Load -->
+    <div class="chart-card chart-wide">
+        <div class="chart-header">
+            <h2 class="chart-title">Weekly Training Load</h2>
+            <span class="chart-sub">Hours per week</span>
+        </div>
+        <canvas id="chartWeeklyLoad"></canvas>
+    </div>
+
+    <!-- Sport Breakdown -->
+    <div class="chart-card chart-narrow">
+        <div class="chart-header">
+            <h2 class="chart-title">Sport Breakdown</h2>
+            <span class="chart-sub">By total hours</span>
+        </div>
+        <canvas id="chartSports"></canvas>
+    </div>
+
+    <!-- Strain vs Recovery -->
+    <div class="chart-card chart-wide">
+        <div class="chart-header">
+            <h2 class="chart-title">Training → Next Day Recovery</h2>
+            <span class="chart-sub">How each workout affected your next-day recovery score</span>
+        </div>
+        <canvas id="chartStrainRecovery"></canvas>
+    </div>
+
+    <!-- Half Ironman Recovery Story -->
+    <div class="chart-card chart-wide">
+        <div class="chart-header">
+            <h2 class="chart-title">Half Ironman Recovery Story</h2>
+            <span class="chart-sub">Recovery + HRV around Jun 14 race day</span>
+        </div>
+        <canvas id="chartRaceRecovery"></canvas>
+    </div>
+
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='training.js') }}"></script>
+{% endblock %}
