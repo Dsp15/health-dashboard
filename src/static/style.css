@@ -202,6 +202,72 @@ html, body {
     transition: width 0.6s ease, background 0.3s;
 }
 
+/* ── Trend arrows on stat cards ────────────────────────────── */
+.stat-secondary {
+    font-size: 12px;
+    color: #58a6ff;
+    margin-top: 4px;
+    min-height: 16px;
+}
+
+.stat-trend {
+    font-size: 11px;
+    margin-bottom: 4px;
+    min-height: 16px;
+}
+.stat-trend.up   { color: var(--green);  }
+.stat-trend.down { color: var(--red);    }
+.stat-trend.flat { color: var(--subtext);}
+
+/* ── Date range toggle ─────────────────────────────────────── */
+.range-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.range-label {
+    font-size: 12px;
+    color: var(--subtext);
+    margin-right: 4px;
+}
+
+.range-btn {
+    padding: 5px 14px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--subtext);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.range-btn:hover  { border-color: #8b949e; color: var(--text); }
+.range-btn.active {
+    background: var(--purple);
+    border-color: var(--purple);
+    color: #fff;
+}
+
+/* ── Section headers ───────────────────────────────────────── */
+.section-header {
+    margin-bottom: 16px;
+}
+
+.section-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+}
+
+.section-sub {
+    font-size: 12px;
+    color: var(--subtext);
+}
+
 /* ── Charts Grid ───────────────────────────────────────────── */
 .chart-grid {
     display: grid;
@@ -272,6 +338,37 @@ canvas {
 
 .chart-wide canvas { max-height: 220px; }
 .chart-narrow canvas { max-height: 300px; }
+
+/* ── Dashboard Layout ──────────────────────────────────────── */
+.dashboard-layout {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 24px;
+    align-items: start;
+}
+
+.sidebar {
+    position: sticky;
+    top: calc(var(--nav-h) + 20px);
+}
+
+.stat-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.stat-stack .stat-card {
+    padding: 16px;
+}
+
+.stat-stack .stat-value {
+    font-size: 28px;
+}
+
+.charts-area {
+    min-width: 0; /* prevents overflow in grid */
+}
 
 /* ── Responsive ────────────────────────────────────────────── */
 @media (max-width: 900px) {

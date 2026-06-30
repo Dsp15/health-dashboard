@@ -168,8 +168,14 @@ class Database:
                 body_battery_max    INTEGER,
                 body_battery_min    INTEGER,
                 floors_ascended     FLOAT,
+                training_readiness  INTEGER,
                 raw                 JSONB
             );
+        """)
+        # Add training_readiness column to existing tables that predate this field
+        self.cursor.execute("""
+            ALTER TABLE garmin_daily
+            ADD COLUMN IF NOT EXISTS training_readiness INTEGER;
         """)
 
         self.cursor.execute("""
@@ -345,19 +351,20 @@ class Database:
                 print(f"  Error inserting activity {a.get('activityId')}: {e}")
         print(f"  Garmin activities: {count} records upserted")
 
-    def upsert_garmin_daily(self, date_str: str, stats: dict):
+    def upsert_garmin_daily(self, date_str: str, stats: dict, training_readiness: int = None):
         """Save Garmin daily stats for one date."""
         try:
             self.cursor.execute("""
                 INSERT INTO garmin_daily
                     (date, total_steps, active_calories, resting_calories,
-                     resting_hr, avg_stress, floors_ascended, raw)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                     resting_hr, avg_stress, floors_ascended, training_readiness, raw)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (date) DO UPDATE SET
-                    total_steps      = EXCLUDED.total_steps,
-                    active_calories  = EXCLUDED.active_calories,
-                    resting_hr       = EXCLUDED.resting_hr,
-                    raw              = EXCLUDED.raw
+                    total_steps         = EXCLUDED.total_steps,
+                    active_calories     = EXCLUDED.active_calories,
+                    resting_hr          = EXCLUDED.resting_hr,
+                    training_readiness  = EXCLUDED.training_readiness,
+                    raw                 = EXCLUDED.raw
             """, (
                 date_str,
                 stats.get("totalSteps"),
@@ -366,10 +373,73 @@ class Database:
                 stats.get("restingHeartRate"),
                 stats.get("averageStressLevel"),
                 stats.get("floorsAscended"),
+                training_readiness,
                 psycopg2.extras.Json(stats),
             ))
         except Exception as e:
             print(f"  Error inserting daily stats {date_str}: {e}")
+
+    def upsert_garmin_sleep(self, date_str: str, sleep_data: dict):
+        """Save Garmin sleep data for one night."""
+        try:
+            daily = sleep_data.get("dailySleepDTO", {})
+            if not daily:
+                return
+            scores = daily.get("sleepScores", {})
+            overall = scores.get("overall", {}) if isinstance(scores, dict) else {}
+            sleep_score = overall.get("value") if isinstance(overall, dict) else None
+
+            self.cursor.execute("""
+                INSERT INTO garmin_sleep
+                    (date, sleep_score, total_sleep_hours, deep_sleep_hours,
+                     rem_sleep_hours, light_sleep_hours, awake_hours,
+                     avg_respiration, avg_spo2, raw)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (date) DO UPDATE SET
+                    sleep_score       = EXCLUDED.sleep_score,
+                    total_sleep_hours = EXCLUDED.total_sleep_hours,
+                    deep_sleep_hours  = EXCLUDED.deep_sleep_hours,
+                    rem_sleep_hours   = EXCLUDED.rem_sleep_hours,
+                    raw               = EXCLUDED.raw
+            """, (
+                date_str,
+                sleep_score,
+                round((daily.get("sleepTimeSeconds")  or 0) / 3600, 2),
+                round((daily.get("deepSleepSeconds")  or 0) / 3600, 2),
+                round((daily.get("remSleepSeconds")   or 0) / 3600, 2),
+                round((daily.get("lightSleepSeconds") or 0) / 3600, 2),
+                round((daily.get("awakeSleepSeconds") or 0) / 3600, 2),
+                daily.get("averageRespirationValue"),
+                daily.get("averageSpO2Value"),
+                psycopg2.extras.Json(sleep_data),
+            ))
+        except Exception as e:
+            print(f"  Error inserting Garmin sleep {date_str}: {e}")
+
+    def upsert_garmin_hrv(self, date_str: str, hrv_data: dict):
+        """Save Garmin HRV summary for one day."""
+        try:
+            summary = hrv_data.get("hrvSummary", {})
+            if not summary:
+                return
+            self.cursor.execute("""
+                INSERT INTO garmin_hrv
+                    (date, weekly_avg_ms, last_night_ms, status, raw)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (date) DO UPDATE SET
+                    weekly_avg_ms = EXCLUDED.weekly_avg_ms,
+                    last_night_ms = EXCLUDED.last_night_ms,
+                    status        = EXCLUDED.status,
+                    raw           = EXCLUDED.raw
+            """, (
+                date_str,
+                summary.get("weeklyAvg"),
+                summary.get("lastNight"),
+                summary.get("status"),
+                psycopg2.extras.Json(hrv_data),
+            ))
+        except Exception as e:
+            print(f"  Error inserting Garmin HRV {date_str}: {e}")
 
     def close(self):
         """Close the database connection."""

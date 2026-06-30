@@ -30,7 +30,7 @@ import os
 import sys
 from datetime import date, timedelta
 
-from flask import Flask, render_template, jsonify, redirect, url_for
+from flask import Flask, render_template, jsonify, redirect, url_for, request
 from flask_socketio import SocketIO, emit
 import psycopg2
 import psycopg2.extras
@@ -106,7 +106,7 @@ def training():
 
 @app.route("/api/today")
 def api_today():
-    """Latest recovery and sleep snapshot for the stat cards at the top."""
+    """Latest snapshot for stat cards — Whoop primary, Garmin secondary."""
     recovery = query("""
         SELECT recovery_score, hrv_rmssd, resting_hr, spo2_pct,
                created_at::date AS date
@@ -122,15 +122,31 @@ def api_today():
         ORDER BY start_time DESC
         LIMIT 1
     """)
+    # Garmin secondary data for comparison in stat cards
+    garmin = query("""
+        SELECT gd.resting_hr           AS garmin_resting_hr,
+               gd.training_readiness   AS garmin_training_readiness,
+               gs.total_sleep_hours    AS garmin_sleep_hours,
+               gs.sleep_score          AS garmin_sleep_score,
+               gh.last_night_ms        AS garmin_hrv_last_night
+        FROM garmin_daily gd
+        LEFT JOIN garmin_sleep gs ON gs.date = gd.date
+        LEFT JOIN garmin_hrv   gh ON gh.date = gd.date
+        WHERE gd.resting_hr IS NOT NULL
+        ORDER BY gd.date DESC
+        LIMIT 1
+    """)
     return jsonify({
         "recovery": recovery[0] if recovery else {},
         "sleep":    sleep[0]    if sleep    else {},
+        "garmin":   garmin[0]   if garmin   else {},
     })
 
 
 @app.route("/api/recovery")
 def api_recovery():
-    """Last 90 days of recovery scores, HRV, and resting HR."""
+    """Recovery scores, HRV, resting HR. Accepts ?days=30|60|90 (default 90)."""
+    days = int(request.args.get("days", 90))
     return jsonify(query("""
         SELECT
             created_at::date        AS date,
@@ -139,14 +155,15 @@ def api_recovery():
             resting_hr,
             spo2_pct
         FROM whoop_recovery
-        WHERE created_at >= CURRENT_DATE - INTERVAL '90 days'
+        WHERE created_at >= CURRENT_DATE - INTERVAL '%s days'
         ORDER BY created_at ASC
-    """))
+    """ % days))
 
 
 @app.route("/api/sleep")
 def api_sleep():
-    """Last 90 days of sleep data — stages, performance, bedtime."""
+    """Sleep data — stages, performance, bedtime. Accepts ?days=30|60|90."""
+    days = int(request.args.get("days", 90))
     return jsonify(query("""
         SELECT
             start_time::date        AS date,
@@ -160,10 +177,85 @@ def api_sleep():
             sleep_performance_pct,
             sleep_efficiency_pct
         FROM whoop_sleep
-        WHERE start_time >= CURRENT_DATE - INTERVAL '90 days'
+        WHERE start_time >= CURRENT_DATE - INTERVAL '%s days'
           AND is_nap = false
         ORDER BY start_time ASC
-    """))
+    """ % days))
+
+
+@app.route("/api/trends")
+def api_trends():
+    """
+    Compare last 7 days vs previous 7 days for trend arrows on stat cards.
+    Returns averages for both windows so the frontend can show ↑ or ↓.
+    """
+    rows = query("""
+        SELECT
+            ROUND(AVG(CASE WHEN created_at >= CURRENT_DATE - 7
+                           THEN recovery_score END)::numeric, 1)  AS recovery_now,
+            ROUND(AVG(CASE WHEN created_at < CURRENT_DATE - 7
+                           AND created_at >= CURRENT_DATE - 14
+                           THEN recovery_score END)::numeric, 1)  AS recovery_prev,
+            ROUND(AVG(CASE WHEN created_at >= CURRENT_DATE - 7
+                           THEN hrv_rmssd END)::numeric, 1)       AS hrv_now,
+            ROUND(AVG(CASE WHEN created_at < CURRENT_DATE - 7
+                           AND created_at >= CURRENT_DATE - 14
+                           THEN hrv_rmssd END)::numeric, 1)       AS hrv_prev,
+            ROUND(AVG(CASE WHEN created_at >= CURRENT_DATE - 7
+                           THEN resting_hr END)::numeric, 1)      AS rhr_now,
+            ROUND(AVG(CASE WHEN created_at < CURRENT_DATE - 7
+                           AND created_at >= CURRENT_DATE - 14
+                           THEN resting_hr END)::numeric, 1)      AS rhr_prev
+        FROM whoop_recovery
+        WHERE created_at >= CURRENT_DATE - 14
+    """)
+    return jsonify(rows[0] if rows else {})
+
+
+@app.route("/api/comparison")
+def api_comparison():
+    """
+    Dual-tracker comparison: Garmin vs Whoop side by side.
+    Joins garmin_daily, garmin_sleep, garmin_hrv with whoop data on date.
+
+    This is the interesting one — two devices measuring the same things
+    with different algorithms. Useful for validating data quality and
+    seeing where the trackers agree or diverge.
+    """
+    days = int(request.args.get("days", 90))
+    return jsonify(query("""
+        SELECT
+            g.date,
+            -- Resting HR from both devices
+            g.resting_hr                            AS garmin_resting_hr,
+            w.resting_hr                            AS whoop_resting_hr,
+            -- Readiness: Body Battery (0-100) vs Whoop Recovery (0-100)
+            CAST(g.raw->>'bodyBatteryMostRecentValue' AS FLOAT) AS body_battery,
+            w.recovery_score                        AS whoop_recovery,
+            -- Stress vs Recovery (should be inversely related)
+            g.avg_stress                            AS garmin_stress,
+            -- HRV from both
+            gh.weekly_avg_ms                        AS garmin_hrv_weekly,
+            gh.last_night_ms                        AS garmin_hrv_last_night,
+            w.hrv_rmssd                             AS whoop_hrv,
+            -- Sleep scores from both
+            gs.sleep_score                          AS garmin_sleep_score,
+            gs.total_sleep_hours                    AS garmin_sleep_hours,
+            ws.sleep_performance_pct                AS whoop_sleep_score,
+            ws.total_in_bed_hours                   AS whoop_sleep_hours
+        FROM garmin_daily g
+        LEFT JOIN whoop_recovery w
+            ON w.created_at::date = g.date
+        LEFT JOIN garmin_hrv gh
+            ON gh.date = g.date
+        LEFT JOIN garmin_sleep gs
+            ON gs.date = g.date
+        LEFT JOIN whoop_sleep ws
+            ON ws.start_time::date = g.date - 1
+           AND ws.is_nap = false
+        WHERE g.date >= CURRENT_DATE - INTERVAL '%s days'
+        ORDER BY g.date ASC
+    """ % days))
 
 
 # ── API: Training ──────────────────────────────────────────────────────────────

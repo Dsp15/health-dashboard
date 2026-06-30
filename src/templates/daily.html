@@ -3,54 +3,86 @@
 
 {% block content %}
 
-<!-- ── Stat Cards ─────────────────────────────────────────────────── -->
-<section class="stat-grid">
+<!-- ── Dashboard Layout: Sidebar + Charts ────────────────────────── -->
+<div class="dashboard-layout">
 
-    <div class="stat-card" id="card-recovery">
-        <div class="stat-label">Recovery</div>
-        <div class="stat-value" id="stat-recovery">--</div>
-        <div class="stat-sub">Whoop score</div>
-        <div class="stat-bar-track">
-            <div class="stat-bar-fill" id="bar-recovery"></div>
+    <!-- LEFT: Today's Insights sidebar -->
+    <aside class="sidebar">
+        <div class="section-header">
+            <h2 class="section-title">🌅 Today's Insights</h2>
+            <span class="section-sub" id="today-date"></span>
         </div>
-    </div>
 
-    <div class="stat-card" id="card-hrv">
-        <div class="stat-label">HRV</div>
-        <div class="stat-value" id="stat-hrv">--</div>
-        <div class="stat-sub">rMSSD (ms)</div>
-    </div>
+        <div class="stat-stack">
 
-    <div class="stat-card" id="card-hr">
-        <div class="stat-label">Resting HR</div>
-        <div class="stat-value" id="stat-hr">--</div>
-        <div class="stat-sub">bpm</div>
-    </div>
+            <div class="stat-card">
+                <div class="stat-label">Recovery</div>
+                <div class="stat-value" id="stat-recovery">--</div>
+                <div class="stat-trend" id="trend-recovery"></div>
+                <div class="stat-bar-track"><div class="stat-bar-fill" id="bar-recovery"></div></div>
+                <div class="stat-secondary" id="stat-training-readiness"></div>
+            </div>
 
-    <div class="stat-card" id="card-sleep">
-        <div class="stat-label">Sleep</div>
-        <div class="stat-value" id="stat-sleep">--</div>
-        <div class="stat-sub">hours in bed</div>
-    </div>
+            <div class="stat-card">
+                <div class="stat-label">HRV</div>
+                <div class="stat-value" id="stat-hrv">--</div>
+                <div class="stat-trend" id="trend-hrv"></div>
+                <div class="stat-sub">Whoop · rMSSD (ms)</div>
+                <div class="stat-secondary" id="stat-hrv-garmin"></div>
+            </div>
 
-    <div class="stat-card" id="card-sleep-perf">
-        <div class="stat-label">Sleep Score</div>
-        <div class="stat-value" id="stat-sleep-perf">--</div>
-        <div class="stat-sub">performance %</div>
-    </div>
+            <div class="stat-card">
+                <div class="stat-label">Resting HR</div>
+                <div class="stat-value" id="stat-hr">--</div>
+                <div class="stat-trend" id="trend-hr"></div>
+                <div class="stat-sub">Whoop · bpm</div>
+                <div class="stat-secondary" id="stat-hr-garmin"></div>
+            </div>
 
-    <div class="stat-card" id="card-bedtime">
-        <div class="stat-label">Bedtime</div>
-        <div class="stat-value" id="stat-bedtime">--</div>
-        <div class="stat-sub">last night</div>
-    </div>
+            <div class="stat-card">
+                <div class="stat-label">Sleep</div>
+                <div class="stat-value" id="stat-sleep">--</div>
+                <div class="stat-sub">Whoop · hours in bed</div>
+                <div class="stat-secondary" id="stat-sleep-garmin"></div>
+            </div>
 
-</section>
+            <div class="stat-card">
+                <div class="stat-label">Sleep Score</div>
+                <div class="stat-value" id="stat-sleep-perf">--</div>
+                <div class="stat-sub">Whoop · performance %</div>
+                <div class="stat-secondary" id="stat-sleep-score-garmin"></div>
+            </div>
 
-<!-- ── Charts ─────────────────────────────────────────────────────── -->
+            <div class="stat-card">
+                <div class="stat-label">Bedtime</div>
+                <div class="stat-value" id="stat-bedtime">--</div>
+                <div class="stat-sub">last night</div>
+            </div>
+
+        </div>
+    </aside>
+
+    <!-- RIGHT: Charts area -->
+    <div class="charts-area">
+
+        <!-- Date Range Toggle -->
+        <div class="range-bar">
+            <span class="range-label">Showing:</span>
+            <button class="range-btn active" onclick="setDays(30)">30 Days</button>
+            <button class="range-btn"        onclick="setDays(60)">60 Days</button>
+            <button class="range-btn"        onclick="setDays(90)">90 Days</button>
+            <button class="range-btn"        onclick="setDays(180)">180 Days</button>
+            <button class="range-btn"        onclick="setDays(365)">365 Days</button>
+            <button class="range-btn"        onclick="setDays(9999)">All Time</button>
+        </div>
+
+        <!-- Whoop Charts header -->
+        <div class="section-header">
+            <h2 class="section-title">📊 Whoop — Recovery & Sleep</h2>
+        </div>
+
 <section class="chart-grid">
 
-    <!-- Recovery Trend -->
     <div class="chart-card chart-wide">
         <div class="chart-header">
             <h2 class="chart-title">Recovery Score</h2>
@@ -63,7 +95,6 @@
         <canvas id="chartRecovery"></canvas>
     </div>
 
-    <!-- HRV Trend -->
     <div class="chart-card">
         <div class="chart-header">
             <h2 class="chart-title">HRV Trend</h2>
@@ -72,7 +103,6 @@
         <canvas id="chartHRV"></canvas>
     </div>
 
-    <!-- Resting HR Trend -->
     <div class="chart-card">
         <div class="chart-header">
             <h2 class="chart-title">Resting Heart Rate</h2>
@@ -81,21 +111,19 @@
         <canvas id="chartRestingHR"></canvas>
     </div>
 
-    <!-- Sleep Stages -->
     <div class="chart-card chart-wide">
         <div class="chart-header">
             <h2 class="chart-title">Sleep Breakdown</h2>
             <div class="chart-legend">
-                <span class="legend-dot blue"></span> Light
-                <span class="legend-dot purple"></span> REM
                 <span class="legend-dot green"></span> Deep
+                <span class="legend-dot purple"></span> REM
+                <span class="legend-dot blue"></span> Light
                 <span class="legend-dot grey"></span> Awake
             </div>
         </div>
         <canvas id="chartSleep"></canvas>
     </div>
 
-    <!-- Sleep Performance -->
     <div class="chart-card">
         <div class="chart-header">
             <h2 class="chart-title">Sleep Performance</h2>
@@ -104,7 +132,6 @@
         <canvas id="chartSleepPerf"></canvas>
     </div>
 
-    <!-- Bedtime -->
     <div class="chart-card">
         <div class="chart-header">
             <h2 class="chart-title">Bedtime</h2>
@@ -113,7 +140,74 @@
         <canvas id="chartBedtime"></canvas>
     </div>
 
+    <!-- HRV vs Recovery Scatter -->
+    <div class="chart-card chart-wide">
+        <div class="chart-header">
+            <h2 class="chart-title">HRV → Recovery Correlation</h2>
+            <span class="chart-sub">Each dot is one day. Higher HRV = higher recovery score.</span>
+        </div>
+        <canvas id="chartScatter"></canvas>
+    </div>
+
 </section>
+
+<!-- ── Dual Tracker Comparison ────────────────────────────────────── -->
+<div class="section-header" style="margin-top: 32px;">
+    <h2 class="section-title">⚖️ Garmin vs Whoop — Dual Tracker</h2>
+    <span class="section-sub">Same metrics, two algorithms. Where they agree, you can trust it.</span>
+</div>
+
+<section class="chart-grid">
+
+    <div class="chart-card chart-wide">
+        <div class="chart-header">
+            <h2 class="chart-title">Resting Heart Rate Comparison</h2>
+            <div class="chart-legend">
+                <span class="legend-dot blue"></span> Garmin
+                <span class="legend-dot green"></span> Whoop
+            </div>
+        </div>
+        <canvas id="chartRHRCompare"></canvas>
+    </div>
+
+    <div class="chart-card chart-wide">
+        <div class="chart-header">
+            <h2 class="chart-title">Readiness: Body Battery vs Whoop Recovery</h2>
+            <div class="chart-legend">
+                <span class="legend-dot blue"></span> Garmin Body Battery
+                <span class="legend-dot green"></span> Whoop Recovery
+            </div>
+        </div>
+        <canvas id="chartReadiness"></canvas>
+    </div>
+
+    <div class="chart-card chart-wide">
+        <div class="chart-header">
+            <h2 class="chart-title">HRV Comparison</h2>
+            <div class="chart-legend">
+                <span class="legend-dot blue"></span> Garmin (weekly avg)
+                <span class="legend-dot purple"></span> Garmin (last night)
+                <span class="legend-dot green"></span> Whoop (rMSSD)
+            </div>
+        </div>
+        <canvas id="chartHRVCompare"></canvas>
+    </div>
+
+    <div class="chart-card chart-wide">
+        <div class="chart-header">
+            <h2 class="chart-title">Sleep Hours Comparison</h2>
+            <div class="chart-legend">
+                <span class="legend-dot blue"></span> Garmin
+                <span class="legend-dot green"></span> Whoop
+            </div>
+        </div>
+        <canvas id="chartSleepCompare"></canvas>
+    </div>
+
+</section>
+
+    </div><!-- end charts-area -->
+</div><!-- end dashboard-layout -->
 {% endblock %}
 
 {% block scripts %}

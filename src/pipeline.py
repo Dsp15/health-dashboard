@@ -72,13 +72,39 @@ def run_garmin_sync(garmin: GarminClient, db: Database, start: str):
 
     while current <= end_date:
         date_str = current.isoformat()
+
         try:
             stats = garmin.get_daily_stats(date_str)
             if stats:
-                db.upsert_garmin_daily(date_str, stats)
+                # Fetch training readiness alongside daily stats
+                tr_score = None
+                try:
+                    tr = garmin.get_training_readiness(date_str)
+                    if isinstance(tr, list) and tr:
+                        tr = tr[0]
+                    if isinstance(tr, dict):
+                        tr_score = tr.get("score")
+                except Exception:
+                    pass
+                db.upsert_garmin_daily(date_str, stats, training_readiness=tr_score)
             day_count += 1
         except Exception as e:
             print(f"    Warning: daily stats for {date_str} failed: {e}")
+
+        try:
+            sleep_data = garmin.get_sleep(date_str)
+            if sleep_data:
+                db.upsert_garmin_sleep(date_str, sleep_data)
+        except Exception:
+            pass  # Sleep not available for every day
+
+        try:
+            hrv_data = garmin.get_hrv_data(date_str)
+            if hrv_data:
+                db.upsert_garmin_hrv(date_str, hrv_data)
+        except Exception:
+            pass  # HRV not available for every day
+
         current += timedelta(days=1)
 
     print(f"  Garmin daily: {day_count} days processed")
@@ -93,6 +119,16 @@ def main():
         "--full",
         action="store_true",
         help="Pull all historical data (use on first run)"
+    )
+    parser.add_argument(
+        "--garmin-only",
+        action="store_true",
+        help="Only sync Garmin data (skips Whoop)"
+    )
+    parser.add_argument(
+        "--whoop-only",
+        action="store_true",
+        help="Only sync Whoop data (skips Garmin)"
     )
     args = parser.parse_args()
 
@@ -117,8 +153,10 @@ def main():
     db.create_tables()
 
     # ── Run syncs ────────────────────────────────────────────────────
-    run_whoop_sync(whoop, db, start=whoop_start)
-    run_garmin_sync(garmin, db, start=garmin_start)
+    if not args.garmin_only:
+        run_whoop_sync(whoop, db, start=whoop_start)
+    if not args.whoop_only:
+        run_garmin_sync(garmin, db, start=garmin_start)
 
     # ── Done ─────────────────────────────────────────────────────────
     db.close()
