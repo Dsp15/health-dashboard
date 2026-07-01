@@ -18,6 +18,11 @@
 let currentDays = 30;   // Default to 30 days for a cleaner initial view
 const charts = {};      // Stores Chart.js instances so we can destroy/recreate
 
+// Today's ISO date string (YYYY-MM-DD), used to distinguish "today" from clicked days
+const TODAY_ISO = new Date().toISOString().split("T")[0];
+// Cache of last trend data so we can restore arrows when returning to today
+let lastTrends = null;
+
 // ── Date Range Toggle ────────────────────────────────────────────────────────
 
 function setDays(days) {
@@ -69,67 +74,127 @@ async function loadCharts() {
 
 // ── Stat Cards ────────────────────────────────────────────────────────────────
 
+/**
+ * Called by loadCharts() on page load / date range change.
+ * Renders today's data and caches trend arrows.
+ */
 function renderStatCards(data, trends) {
-    const rec   = data.recovery || {};
-    const sleep = data.sleep    || {};
-
-    // Recovery score
-    const score = rec.recovery_score;
-    if (score != null) {
-        const el = document.getElementById("stat-recovery");
-        el.textContent = Math.round(score) + "%";
-        el.className   = "stat-value " + recoveryClass(score);
-        const bar = document.getElementById("bar-recovery");
-        bar.style.width      = score + "%";
-        bar.style.background = recoveryColor(score);
-    }
-
-    setCard("stat-hrv",        rec.hrv_rmssd,             v => Math.round(v) + " ms");
-    setCard("stat-hr",         rec.resting_hr,            v => Math.round(v));
-    setCard("stat-sleep",      sleep.total_in_bed_hours,  v => v.toFixed(1) + "h");
-    setCard("stat-sleep-perf", sleep.sleep_performance_pct, v => Math.round(v) + "%");
-
-    if (sleep.start_time) {
-        const d = new Date(sleep.start_time);
-        document.getElementById("stat-bedtime").textContent = fmtTime(d);
-    }
-
-    // Today's date label
-    const dateEl = document.getElementById("today-date");
-    if (dateEl) {
-        const today = new Date();
-        dateEl.textContent = today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-    }
-
-    // Garmin secondary lines on stat cards
-    const g = data.garmin || {};
-    if (g.garmin_resting_hr)
-        document.getElementById("stat-hr-garmin").textContent =
-            `Garmin ${Math.round(g.garmin_resting_hr)} bpm`;
-    if (g.garmin_sleep_hours)
-        document.getElementById("stat-sleep-garmin").textContent =
-            `Garmin ${g.garmin_sleep_hours.toFixed(1)}h`;
-    if (g.garmin_sleep_score)
-        document.getElementById("stat-sleep-score-garmin").textContent =
-            `Garmin score ${Math.round(g.garmin_sleep_score)}`;
-    if (g.garmin_training_readiness != null)
-        document.getElementById("stat-training-readiness").textContent =
-            `Training Readiness ${Math.round(g.garmin_training_readiness)}`;
-    if (g.garmin_hrv_last_night != null)
-        document.getElementById("stat-hrv-garmin").textContent =
-            `Garmin ${Math.round(g.garmin_hrv_last_night)} ms last night`;
-
-    // Trend arrows — compare last 7 days to previous 7 days
+    lastTrends = trends;
+    applyDayCards(data, TODAY_ISO);
     if (trends) {
         setTrend("trend-recovery", trends.recovery_now, trends.recovery_prev, true);
         setTrend("trend-hrv",      trends.hrv_now,      trends.hrv_prev,      true);
-        // For resting HR, lower is better so flip the arrow direction
         setTrend("trend-hr",       trends.rhr_now,      trends.rhr_prev,      false);
     }
 }
 
+/**
+ * Fetch one day's data from /api/day and update the stat cards.
+ * Called when user clicks a chart point. Pass null to reset to today.
+ */
+async function loadDayCards(date) {
+    const target = date || TODAY_ISO;
+    try {
+        const data = await fetch(`/api/day?date=${target}`).then(r => r.json());
+        applyDayCards(data, target);
+
+        if (target === TODAY_ISO && lastTrends) {
+            // Restore trend arrows when returning to today
+            setTrend("trend-recovery", lastTrends.recovery_now, lastTrends.recovery_prev, true);
+            setTrend("trend-hrv",      lastTrends.hrv_now,      lastTrends.hrv_prev,      true);
+            setTrend("trend-hr",       lastTrends.rhr_now,      lastTrends.rhr_prev,      false);
+        } else {
+            // Trend arrows don't apply to a single historical day — clear them
+            ["trend-recovery", "trend-hrv", "trend-hr"].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.textContent = ""; el.className = "stat-trend"; }
+            });
+        }
+    } catch (err) {
+        console.error("Failed to load day:", err);
+    }
+}
+
+/**
+ * Populate the stat cards with data for a specific date.
+ * Updates the section title and shows/hides the "Back to Today" button.
+ */
+function applyDayCards(data, date) {
+    const rec   = data.recovery || {};
+    const sleep = data.sleep    || {};
+    const g     = data.garmin   || {};
+    const isToday = date === TODAY_ISO;
+
+    // ── Section title + back button ───────────────────────────
+    const titleEl = document.getElementById("insights-title");
+    const backBtn = document.getElementById("btn-back-today");
+    const dateEl  = document.getElementById("today-date");
+
+    if (isToday) {
+        if (titleEl) titleEl.textContent = "🌅 Today's Insights";
+        if (backBtn) backBtn.style.display = "none";
+        if (dateEl) {
+            const d = new Date();
+            dateEl.textContent = d.toLocaleDateString("en-US", {
+                weekday: "long", month: "long", day: "numeric", year: "numeric"
+            });
+        }
+    } else {
+        // Parse carefully — avoid UTC/local timezone shift with Date(string)
+        const [y, m, dd] = date.split("-").map(Number);
+        const dt = new Date(y, m - 1, dd);
+        if (titleEl) titleEl.textContent =
+            `📅 ${dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} Insights`;
+        if (backBtn) backBtn.style.display = "";
+        if (dateEl) dateEl.textContent = dt.toLocaleDateString("en-US", {
+            weekday: "long", month: "long", day: "numeric", year: "numeric"
+        });
+    }
+
+    // ── Recovery score ────────────────────────────────────────
+    const score = rec.recovery_score;
+    const scoreEl = document.getElementById("stat-recovery");
+    const barEl   = document.getElementById("bar-recovery");
+    if (score != null) {
+        scoreEl.textContent  = Math.round(score) + "%";
+        scoreEl.className    = "stat-value " + recoveryClass(score);
+        barEl.style.width      = score + "%";
+        barEl.style.background = recoveryColor(score);
+    } else {
+        scoreEl.textContent = "--"; scoreEl.className = "stat-value";
+        if (barEl) { barEl.style.width = "0%"; }
+    }
+
+    setCard("stat-hrv",        rec.hrv_rmssd,               v => Math.round(v) + " ms");
+    setCard("stat-hr",         rec.resting_hr,              v => Math.round(v));
+    setCard("stat-sleep",      sleep.total_in_bed_hours,    v => v.toFixed(1) + "h");
+    setCard("stat-sleep-perf", sleep.sleep_performance_pct, v => Math.round(v) + "%");
+
+    const bedEl = document.getElementById("stat-bedtime");
+    if (sleep.start_time) {
+        bedEl.textContent = fmtTime(new Date(sleep.start_time));
+    } else {
+        bedEl.textContent = "--";
+    }
+
+    // ── Garmin secondary lines ────────────────────────────────
+    const ghr  = document.getElementById("stat-hr-garmin");
+    const gslp = document.getElementById("stat-sleep-garmin");
+    const gsc  = document.getElementById("stat-sleep-score-garmin");
+    const gtr  = document.getElementById("stat-training-readiness");
+    const ghrv = document.getElementById("stat-hrv-garmin");
+
+    if (ghr)  ghr.textContent  = g.garmin_resting_hr      ? `Garmin ${Math.round(g.garmin_resting_hr)} bpm`                    : "";
+    if (gslp) gslp.textContent = g.garmin_sleep_hours     ? `Garmin ${g.garmin_sleep_hours.toFixed(1)}h`                        : "";
+    if (gsc)  gsc.textContent  = g.garmin_sleep_score     ? `Garmin score ${Math.round(g.garmin_sleep_score)}`                  : "";
+    if (gtr)  gtr.textContent  = g.garmin_training_readiness != null ? `Training Readiness ${Math.round(g.garmin_training_readiness)}` : "";
+    if (ghrv) ghrv.textContent = g.garmin_hrv_last_night != null ? `Garmin ${Math.round(g.garmin_hrv_last_night)} ms last night`   : "";
+}
+
 function setCard(id, value, fmt) {
-    if (value != null) document.getElementById(id).textContent = fmt(value);
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = value != null ? fmt(value) : "--";
 }
 
 /**
@@ -179,10 +244,10 @@ function renderRecoveryChart(data) {
                 y: { ...yAxis(), min: 0, max: 100, ticks: { callback: v => v + "%" } }
             },
             plugins: { ...basePlugins(), tooltip: { callbacks: {
-                label: ctx => `Recovery: ${Math.round(ctx.raw)}%`
+                label: ctx => `Recovery: ${Math.round(ctx.raw)}% — click to inspect`
             }}}
         }
-    });
+    }, data);
 }
 
 // ── HRV Chart ─────────────────────────────────────────────────────────────────
@@ -207,10 +272,10 @@ function renderHRVChart(data) {
                 y: { ...yAxis(), ticks: { callback: v => v + " ms" } }
             },
             plugins: { ...basePlugins(), tooltip: { callbacks: {
-                label: ctx => `HRV: ${Math.round(ctx.raw)} ms`
+                label: ctx => `HRV: ${Math.round(ctx.raw)} ms — click to inspect`
             }}}
         }
-    });
+    }, data);
 }
 
 // ── Resting HR Chart ──────────────────────────────────────────────────────────
@@ -235,10 +300,10 @@ function renderRestingHRChart(data) {
                 y: { ...yAxis(), ticks: { callback: v => v + " bpm" } }
             },
             plugins: { ...basePlugins(), tooltip: { callbacks: {
-                label: ctx => `Resting HR: ${Math.round(ctx.raw)} bpm`
+                label: ctx => `Resting HR: ${Math.round(ctx.raw)} bpm — click to inspect`
             }}}
         }
-    });
+    }, data);
 }
 
 // ── Sleep Stacked Bar ─────────────────────────────────────────────────────────
@@ -262,10 +327,10 @@ function renderSleepChart(data) {
                 y: { ...yAxis(), stacked: true, ticks: { callback: v => v + "h" } }
             },
             plugins: { ...basePlugins(), tooltip: { callbacks: {
-                label: ctx => `${ctx.dataset.label}: ${ctx.raw?.toFixed(1)}h`
+                label: ctx => `${ctx.dataset.label}: ${ctx.raw?.toFixed(1)}h — click to inspect`
             }}}
         }
-    });
+    }, data);
 }
 
 // ── Sleep Performance ─────────────────────────────────────────────────────────
@@ -290,10 +355,10 @@ function renderSleepPerfChart(data) {
                 y: { ...yAxis(), min: 0, max: 100, ticks: { callback: v => v + "%" } }
             },
             plugins: { ...basePlugins(), tooltip: { callbacks: {
-                label: ctx => `Sleep score: ${Math.round(ctx.raw)}%`
+                label: ctx => `Sleep score: ${Math.round(ctx.raw)}% — click to inspect`
             }}}
         }
-    });
+    }, data);
 }
 
 // ── Bedtime Chart ─────────────────────────────────────────────────────────────
@@ -335,11 +400,11 @@ function renderBedtimeChart(data) {
                 label: ctx => {
                     const h = ctx.raw % 24;
                     const m = Math.round((h % 1) * 60).toString().padStart(2, "0");
-                    return `Bedtime: ${Math.floor(h) % 12 || 12}:${m}${h >= 12 ? "pm" : "am"}`;
+                    return `Bedtime: ${Math.floor(h) % 12 || 12}:${m}${h >= 12 ? "pm" : "am"} — click to inspect`;
                 }
             }}}
         }
-    });
+    }, data);
 }
 
 // ── HRV vs Recovery Scatter ───────────────────────────────────────────────────
@@ -377,13 +442,13 @@ function renderScatterChart(data) {
             },
             plugins: { ...basePlugins(), tooltip: { callbacks: {
                 label: ctx => [
-                    `Date: ${fmtDate(ctx.raw.date)}`,
+                    `Date: ${fmtDate(ctx.raw.date)} — click to inspect`,
                     `HRV: ${Math.round(ctx.raw.x)} ms`,
                     `Recovery: ${Math.round(ctx.raw.y)}%`,
                 ]
             }}}
         }
-    });
+    }, points);  // scatter uses points[] whose items have .date
 }
 
 // ── Dual Tracker: Resting HR ──────────────────────────────────────────────────
@@ -567,10 +632,41 @@ function renderSleepCompareChart(data) {
 
 // ── Shared Utilities ──────────────────────────────────────────────────────────
 
-function renderChart(id, config) {
+/**
+ * Build a Chart.js onClick handler that calls loadDayCards when a data point is clicked.
+ * @param {Array} dataArr - the array driving the chart, each element must have a `.date` field
+ */
+function chartClickHandler(dataArr) {
+    return (event, elements) => {
+        if (elements.length === 0) return;
+        const date = dataArr[elements[0].index]?.date;
+        if (date) loadDayCards(date);
+    };
+}
+
+/** Makes the cursor a pointer when hovering over a clickable data point. */
+function chartHoverHandler() {
+    return (event, elements) => {
+        if (event.native?.target) {
+            event.native.target.style.cursor = elements.length > 0 ? "pointer" : "default";
+        }
+    };
+}
+
+/**
+ * Create or replace a Chart.js instance.
+ * @param {string} id         - canvas element ID
+ * @param {object} config     - full Chart.js config
+ * @param {Array}  [clickData] - optional data array; if provided, attaches click-to-inspect handler
+ */
+function renderChart(id, config, clickData) {
     if (charts[id]) charts[id].destroy();
     const ctx = document.getElementById(id);
     if (!ctx) return;
+    if (clickData) {
+        config.options.onClick = chartClickHandler(clickData);
+        config.options.onHover = chartHoverHandler();
+    }
     charts[id] = new Chart(ctx, config);
 }
 

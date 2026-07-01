@@ -339,35 +339,25 @@ canvas {
 .chart-wide canvas { max-height: 220px; }
 .chart-narrow canvas { max-height: 300px; }
 
-/* ── Dashboard Layout ──────────────────────────────────────── */
-.dashboard-layout {
+/* ── Back to Today button ──────────────────────────────────── */
+.back-today-btn {
+    padding: 3px 12px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--blue);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.back-today-btn:hover { background: #21262d; border-color: var(--blue); }
+
+/* ── Today's Insights top row ──────────────────────────────── */
+.stat-stack-top {
     display: grid;
-    grid-template-columns: 220px 1fr;
-    gap: 24px;
-    align-items: start;
-}
-
-.sidebar {
-    position: sticky;
-    top: calc(var(--nav-h) + 20px);
-}
-
-.stat-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.stat-stack .stat-card {
-    padding: 16px;
-}
-
-.stat-stack .stat-value {
-    font-size: 28px;
-}
-
-.charts-area {
-    min-width: 0; /* prevents overflow in grid */
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
 }
 
 /* ── Responsive ────────────────────────────────────────────── */

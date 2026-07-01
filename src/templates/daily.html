@@ -3,17 +3,17 @@
 
 {% block content %}
 
-<!-- ── Dashboard Layout: Sidebar + Charts ────────────────────────── -->
-<div class="dashboard-layout">
+<!-- ── Today's Insights ───────────────────────────────────────────── -->
+<div class="section-header">
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <h2 class="section-title" id="insights-title">🌅 Today's Insights</h2>
+        <button id="btn-back-today" class="back-today-btn"
+                onclick="loadDayCards(null)" style="display:none">↩ Back to Today</button>
+    </div>
+    <span class="section-sub" id="today-date"></span>
+</div>
 
-    <!-- LEFT: Today's Insights sidebar -->
-    <aside class="sidebar">
-        <div class="section-header">
-            <h2 class="section-title">🌅 Today's Insights</h2>
-            <span class="section-sub" id="today-date"></span>
-        </div>
-
-        <div class="stat-stack">
+<div class="stat-stack-top">
 
             <div class="stat-card">
                 <div class="stat-label">Recovery</div>
@@ -60,13 +60,10 @@
             </div>
 
         </div>
-    </aside>
+</div>
 
-    <!-- RIGHT: Charts area -->
-    <div class="charts-area">
-
-        <!-- Date Range Toggle -->
-        <div class="range-bar">
+<!-- Date Range Toggle -->
+<div class="range-bar">
             <span class="range-label">Showing:</span>
             <button class="range-btn active" onclick="setDays(30)">30 Days</button>
             <button class="range-btn"        onclick="setDays(60)">60 Days</button>
@@ -206,8 +203,6 @@
 
 </section>
 
-    </div><!-- end charts-area -->
-</div><!-- end dashboard-layout -->
 {% endblock %}
 
 {% block scripts %}

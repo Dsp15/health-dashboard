@@ -183,6 +183,50 @@ def api_sleep():
     """ % days))
 
 
+@app.route("/api/day")
+def api_day():
+    """
+    Stats for a specific date — used when user clicks a chart point.
+    Defaults to today if no date provided.
+    """
+    day = request.args.get("date", date.today().isoformat())
+
+    recovery = query("""
+        SELECT recovery_score, hrv_rmssd, resting_hr, spo2_pct,
+               created_at::date AS date
+        FROM whoop_recovery
+        WHERE created_at::date = %s
+        LIMIT 1
+    """, [day])
+
+    sleep = query("""
+        SELECT total_in_bed_hours, deep_sleep_hours, rem_sleep_hours,
+               light_sleep_hours, sleep_performance_pct, start_time
+        FROM whoop_sleep
+        WHERE start_time::date = %s AND is_nap = false
+        LIMIT 1
+    """, [day])
+
+    garmin = query("""
+        SELECT gd.resting_hr            AS garmin_resting_hr,
+               gd.training_readiness    AS garmin_training_readiness,
+               gs.total_sleep_hours     AS garmin_sleep_hours,
+               gs.sleep_score           AS garmin_sleep_score,
+               gh.last_night_ms         AS garmin_hrv_last_night
+        FROM garmin_daily gd
+        LEFT JOIN garmin_sleep gs ON gs.date = gd.date
+        LEFT JOIN garmin_hrv   gh ON gh.date = gd.date
+        WHERE gd.date = %s
+    """, [day])
+
+    return jsonify({
+        "date":     day,
+        "recovery": recovery[0] if recovery else {},
+        "sleep":    sleep[0]    if sleep    else {},
+        "garmin":   garmin[0]   if garmin   else {},
+    })
+
+
 @app.route("/api/trends")
 def api_trends():
     """
