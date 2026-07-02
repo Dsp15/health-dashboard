@@ -73,6 +73,18 @@
             <button class="range-btn"        onclick="setDays(9999)">All Time</button>
         </div>
 
+        <!-- AI Weekly Summary -->
+        <div class="ai-summary-card" id="ai-card">
+            <div class="ai-card-header">
+                <span class="ai-icon">🤖</span>
+                <span class="ai-title">Weekly AI Summary</span>
+                <button class="ai-refresh-btn" id="ai-refresh-btn" onclick="loadAiSummary(true)" title="Regenerate">↺</button>
+            </div>
+            <div class="ai-body" id="ai-body">
+                <span class="ai-loading">Generating your weekly insights...</span>
+            </div>
+        </div>
+
         <!-- Whoop Charts header -->
         <div class="section-header">
             <h2 class="section-title">📊 Whoop — Recovery & Sleep</h2>

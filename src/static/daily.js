@@ -712,5 +712,46 @@ function yAxis() {
     return { grid: { color: "#21262d" }, ticks: { color: "#8b949e" }, border: { color: "#30363d" } };
 }
 
+// ── AI Weekly Summary ─────────────────────────────────────────────────────────
+
+let aiSummaryCache = null;  // cache so we don't re-call the API on every chart reload
+
+/**
+ * Fetch and display the AI-generated weekly summary.
+ * @param {boolean} force - if true, bypass cache and regenerate
+ */
+async function loadAiSummary(force = false) {
+    const body    = document.getElementById("ai-body");
+    const btn     = document.getElementById("ai-refresh-btn");
+    if (!body) return;
+
+    // Serve from cache unless forced refresh
+    if (aiSummaryCache && !force) {
+        body.textContent = aiSummaryCache;
+        return;
+    }
+
+    // Loading state
+    body.innerHTML = '<span class="ai-loading">Generating your weekly insights...</span>';
+    if (btn) { btn.classList.add("spinning"); btn.disabled = true; }
+
+    try {
+        const res  = await fetch("/api/ai_summary");
+        const data = await res.json();
+
+        if (data.error) {
+            body.innerHTML = `<span class="ai-error">⚠️ ${data.error}</span>`;
+        } else {
+            aiSummaryCache = data.summary;
+            body.textContent = data.summary;
+        }
+    } catch (err) {
+        body.innerHTML = '<span class="ai-error">⚠️ Could not reach the AI summary endpoint.</span>';
+    } finally {
+        if (btn) { btn.classList.remove("spinning"); btn.disabled = false; }
+    }
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 loadCharts();
+loadAiSummary();

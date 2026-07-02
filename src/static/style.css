@@ -339,6 +339,69 @@ canvas {
 .chart-wide canvas { max-height: 220px; }
 .chart-narrow canvas { max-height: 300px; }
 
+/* ── AI Summary Card ───────────────────────────────────────── */
+.ai-summary-card {
+    background: linear-gradient(135deg, #161b22 0%, #1a1f2e 100%);
+    border: 1px solid #3d4a8a;
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 20px;
+    position: relative;
+}
+
+.ai-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.ai-icon { font-size: 16px; }
+
+.ai-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #8b9cf4;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.ai-refresh-btn {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid #3d4a8a;
+    border-radius: 6px;
+    color: #8b9cf4;
+    font-size: 16px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, transform 0.2s;
+}
+.ai-refresh-btn:hover    { background: #21262d; }
+.ai-refresh-btn.spinning { animation: spin 1s linear infinite; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.ai-body {
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--text);
+}
+
+.ai-loading {
+    color: var(--subtext);
+    font-style: italic;
+}
+
+.ai-error {
+    color: var(--red);
+    font-size: 13px;
+}
+
 /* ── Back to Today button ──────────────────────────────────── */
 .back-today-btn {
     padding: 3px 12px;

@@ -26,6 +26,7 @@ Run it:
 Then open: http://localhost:5000
 """
 
+import json
 import os
 import sys
 from datetime import date, timedelta
@@ -309,15 +310,15 @@ def api_activities():
     """All Garmin activities joined with next-day Whoop recovery."""
     return jsonify(query("""
         SELECT
-            a.start_time::date          AS date,
+            a.start_time::date                          AS date,
             a.sport_type,
             a.name,
-            ROUND(a.duration_secs / 60) AS duration_mins,
+            ROUND(a.duration_secs / 60)                 AS duration_mins,
             a.avg_hr,
-            ROUND(a.distance_m / 1000.0, 1) AS distance_km,
+            ROUND((a.distance_m / 1000.0)::numeric, 1)  AS distance_km,
             a.calories,
-            r.recovery_score            AS next_day_recovery,
-            r.hrv_rmssd                 AS next_day_hrv
+            r.recovery_score                            AS next_day_recovery,
+            r.hrv_rmssd                                 AS next_day_hrv
         FROM garmin_activities a
         LEFT JOIN whoop_recovery r
             ON r.created_at::date = a.start_time::date + 1
@@ -331,9 +332,9 @@ def api_weekly_load():
     return jsonify(query("""
         SELECT
             DATE_TRUNC('week', start_time)::date    AS week,
-            COUNT(*)                                AS sessions,
-            ROUND(SUM(duration_secs) / 3600.0, 1)  AS total_hours,
-            STRING_AGG(DISTINCT sport_type, ', ')   AS sports
+            COUNT(*)                                            AS sessions,
+            ROUND((SUM(duration_secs) / 3600.0)::numeric, 1)   AS total_hours,
+            STRING_AGG(DISTINCT sport_type, ', ')               AS sports
         FROM garmin_activities
         GROUP BY DATE_TRUNC('week', start_time)
         ORDER BY week ASC
@@ -346,8 +347,8 @@ def api_sport_breakdown():
     return jsonify(query("""
         SELECT
             sport_type,
-            COUNT(*)                                AS sessions,
-            ROUND(SUM(duration_secs) / 3600.0, 1)  AS total_hours
+            COUNT(*)                                            AS sessions,
+            ROUND((SUM(duration_secs) / 3600.0)::numeric, 1)   AS total_hours
         FROM garmin_activities
         GROUP BY sport_type
         ORDER BY total_hours DESC
@@ -369,6 +370,120 @@ def api_recovery_timeline():
         WHERE created_at::date BETWEEN '2026-06-10' AND '2026-06-29'
         ORDER BY created_at ASC
     """))
+
+
+# ── API: AI Summary ───────────────────────────────────────────────────────────
+
+@app.route("/api/ai_summary")
+def api_ai_summary():
+    """
+    Generate a weekly health summary using the Claude API.
+
+    How it works:
+      1. We pull the last 7 days of recovery, sleep, and training data from Postgres
+      2. We format that into a short data summary
+      3. We send it to Claude (Haiku model — fast and cheap) with a prompt
+      4. Claude writes 2-3 sentences describing what the numbers mean
+      5. We return the text to the browser to display in the AI card
+
+    Why Claude Haiku?
+      - It's the fastest model — response comes back in ~1 second
+      - We're just summarizing numbers into English, not doing complex reasoning
+      - It costs a tiny fraction of a cent per summary
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return jsonify({"error": "ANTHROPIC_API_KEY not set in .env"}), 503
+
+    # ── Pull the last 7 days of data ───────────────────────────
+    recovery_rows = query("""
+        SELECT created_at::date AS date, recovery_score, hrv_rmssd, resting_hr
+        FROM whoop_recovery
+        WHERE created_at >= CURRENT_DATE - 7
+        ORDER BY created_at DESC
+    """)
+
+    sleep_rows = query("""
+        SELECT start_time::date AS date,
+               ROUND(total_in_bed_hours::numeric, 1) AS hours_in_bed,
+               sleep_performance_pct AS sleep_score
+        FROM whoop_sleep
+        WHERE start_time >= CURRENT_DATE - 7
+          AND is_nap = false
+        ORDER BY start_time DESC
+    """)
+
+    activity_rows = query("""
+        SELECT start_time::date AS date, sport_type,
+               ROUND(duration_secs / 60)                      AS duration_mins,
+               ROUND((distance_m / 1000.0)::numeric, 1)       AS distance_km,
+               avg_hr
+        FROM garmin_activities
+        WHERE start_time >= CURRENT_DATE - 7
+        ORDER BY start_time DESC
+    """)
+
+    # ── 7-vs-7 trend comparison (same as /api/trends) ──────────
+    trend_rows = query("""
+        SELECT
+            ROUND(AVG(CASE WHEN created_at >= CURRENT_DATE - 7
+                           THEN recovery_score END)::numeric, 1)  AS recovery_this_week,
+            ROUND(AVG(CASE WHEN created_at <  CURRENT_DATE - 7
+                           AND  created_at >= CURRENT_DATE - 14
+                           THEN recovery_score END)::numeric, 1)  AS recovery_last_week,
+            ROUND(AVG(CASE WHEN created_at >= CURRENT_DATE - 7
+                           THEN hrv_rmssd END)::numeric, 1)       AS hrv_this_week,
+            ROUND(AVG(CASE WHEN created_at <  CURRENT_DATE - 7
+                           AND  created_at >= CURRENT_DATE - 14
+                           THEN hrv_rmssd END)::numeric, 1)       AS hrv_last_week
+        FROM whoop_recovery
+        WHERE created_at >= CURRENT_DATE - 14
+    """)
+    trends = trend_rows[0] if trend_rows else {}
+
+    # ── Build the prompt ────────────────────────────────────────
+    data_summary = f"""ATHLETE: Dan — triathlete, completed a Half Ironman on June 14, 2026.
+Cannot wear devices during work hours (causes data gaps on some days).
+
+LAST 7 DAYS — RECOVERY & HRV (Whoop):
+{json.dumps(recovery_rows, indent=2, default=str)}
+
+LAST 7 DAYS — SLEEP (Whoop):
+{json.dumps(sleep_rows, indent=2, default=str)}
+
+LAST 7 DAYS — TRAINING (Garmin):
+{json.dumps(activity_rows, indent=2, default=str)}
+
+TREND (this week vs last week):
+  Recovery: {trends.get('recovery_this_week', 'n/a')} vs {trends.get('recovery_last_week', 'n/a')} last week
+  HRV:      {trends.get('hrv_this_week', 'n/a')} ms vs {trends.get('hrv_last_week', 'n/a')} ms last week
+"""
+
+    prompt = f"""You are a sports performance coach reviewing a triathlete's weekly health data.
+
+Write exactly 3 short sentences (no bullet points, no markdown, plain text):
+1. What the recovery and HRV numbers show about this week vs last week
+2. How training this week looks relative to the body's readiness signals
+3. One specific, actionable recommendation for the coming week
+
+Keep it direct and specific — reference the actual numbers. No filler phrases like "Great job!" or "It looks like..."
+
+Data:
+{data_summary}"""
+
+    # ── Call Claude API ─────────────────────────────────────────
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        summary_text = message.content[0].text.strip()
+        return jsonify({"summary": summary_text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ── WebSocket Events ───────────────────────────────────────────────────────────
