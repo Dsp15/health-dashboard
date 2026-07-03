@@ -122,6 +122,25 @@ python src/app.py
 
 ---
 
+## What I'd Build Next
+
+**Claude AI coaching layer**
+Replace the rule-based weekly summary with a full natural language interface. Ask questions in plain English — "How many hours did I train the week before my best recovery scores?" or "What pattern shows up before my HRV drops?" — and get answers pulled directly from the database. Claude would write the SQL, run it, and interpret the results. This turns the dashboard from a chart viewer into a genuine performance coach.
+
+**Automated daily sync**
+Right now syncing requires clicking a button. A scheduled job (cron or a task queue) would pull fresh data every morning at 6am automatically — so the dashboard is always up to date when you open it.
+
+**Smart alerts**
+Push a notification (email or SMS) when something worth knowing happens: HRV drops more than 20% below baseline, recovery has been yellow or red for 5 consecutive days, or resting HR spikes unexpectedly. Proactive signals, not just reactive charts.
+
+**Training plan integration**
+Use recovery and HRV trends to suggest whether today should be a hard session, easy effort, or rest day. Connect to a planned training calendar and flag when the plan conflicts with what the body signals say.
+
+**Multi-athlete support**
+Add user accounts so friends or training partners could each connect their own devices. Turns a personal tool into a product.
+
+---
+
 ## What I Learned
 
 **OAuth 2.0 in practice** — implementing the full authorization code flow: redirect the user, handle the callback, exchange a code for a token, refresh when it expires. Most production APIs use this pattern.
