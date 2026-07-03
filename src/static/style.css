@@ -118,6 +118,11 @@ html, body {
     50%       { opacity: 0.3; }
 }
 
+.sync-age {
+    font-size: 11px;
+    color: var(--subtext);
+}
+
 .sync-btn {
     padding: 5px 14px;
     background: #21262d;

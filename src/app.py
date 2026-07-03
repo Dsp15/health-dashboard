@@ -26,11 +26,15 @@ Run it:
 Then open: http://localhost:5000
 """
 
+import atexit
 import json
 import os
 import sys
-from datetime import date, timedelta
+import threading
+from datetime import date, datetime, timedelta
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from flask import Flask, render_template, jsonify, redirect, url_for, request
 from flask_socketio import SocketIO, emit
 import psycopg2
@@ -50,6 +54,103 @@ app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "dev-health-dashboard")
 
 # async_mode='threading' works without installing extra async libraries
 socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
+
+
+# ── Auto Sync ─────────────────────────────────────────────────────────────────
+
+def run_background_sync(reason="scheduled"):
+    """
+    Pull the last 7 days of data from Whoop and Garmin in a background thread.
+
+    This is the same logic as the WebSocket "Sync Now" button, but it runs
+    automatically — either on a schedule (6am daily) or when the server
+    starts and detects stale data.
+
+    Why a background thread?
+      Flask handles one request at a time per thread. If we ran the sync
+      inside a request, the browser would hang waiting for it. Running it
+      in a separate thread lets Flask keep serving pages while syncing.
+    """
+    print(f"\n📡 Auto-sync triggered ({reason})...")
+    try:
+        sys.path.insert(0, os.path.dirname(__file__))
+        from whoop_client import WhoopClient
+        from garmin_client import GarminClient
+        from pipeline import run_whoop_sync, run_garmin_sync
+        from database import Database
+
+        start  = (date.today() - timedelta(days=7)).isoformat()
+        db     = Database()
+        whoop  = WhoopClient()
+        garmin = GarminClient()
+
+        run_whoop_sync(whoop, db, start=start)
+        run_garmin_sync(garmin, db, start=start)
+        db.close()
+
+        print("✅ Auto-sync complete")
+        # Push a notification to any open browser tabs
+        socketio.emit("sync_complete", {
+            "success": True,
+            "message": f"Auto-sync complete ({reason})"
+        })
+    except Exception as e:
+        print(f"⚠️  Auto-sync failed: {e}")
+
+
+def hours_since_last_sync():
+    """
+    Check the database to see how old the most recent Whoop record is.
+    Returns hours as a float. Returns 999 if we can't tell (treat as stale).
+    """
+    try:
+        rows = query("SELECT MAX(created_at) AS last FROM whoop_recovery")
+        if rows and rows[0].get("last"):
+            last = datetime.fromisoformat(str(rows[0]["last"]))
+            # Make both timezone-aware or both naive for comparison
+            now = datetime.now(last.tzinfo) if last.tzinfo else datetime.now()
+            return (now - last).total_seconds() / 3600
+    except Exception:
+        pass
+    return 999
+
+
+def start_scheduler():
+    """
+    Set up APScheduler with two jobs:
+      1. Daily 6am sync — runs every morning automatically
+      2. Startup sync   — fires once immediately if data is > 4 hours old
+
+    We only start the scheduler in the actual Flask process, not in the
+    Werkzeug reloader's watcher process (which also imports this file).
+    """
+    scheduler = BackgroundScheduler(daemon=True)
+
+    # Job 1: every day at 6:00am
+    scheduler.add_job(
+        func=lambda: run_background_sync("6am daily"),
+        trigger=CronTrigger(hour=6, minute=0),
+        id="daily_6am_sync",
+        replace_existing=True,
+    )
+
+    scheduler.start()
+    # Shut down cleanly when Flask exits
+    atexit.register(scheduler.shutdown)
+
+    # Job 2: startup sync if data is stale
+    stale = hours_since_last_sync()
+    if stale > 4:
+        print(f"⏰ Data is {stale:.0f}h old — running startup sync in background...")
+        threading.Thread(target=lambda: run_background_sync("startup"), daemon=True).start()
+    else:
+        print(f"✅ Data is fresh ({stale:.1f}h old) — skipping startup sync")
+
+
+# Only start the scheduler in the real server process, not the reloader watcher.
+# WERKZEUG_RUN_MAIN is set to 'true' in the child (real) process.
+if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    start_scheduler()
 
 
 # ── Database Helper ────────────────────────────────────────────────────────────
@@ -104,6 +205,19 @@ def training():
 
 
 # ── API: Daily Health ──────────────────────────────────────────────────────────
+
+@app.route("/api/sync_status")
+def api_sync_status():
+    """Returns how long ago the last sync was — shown in the navbar."""
+    hours = hours_since_last_sync()
+    if hours < 1:
+        label = f"{int(hours * 60)}m ago"
+    elif hours < 24:
+        label = f"{hours:.0f}h ago"
+    else:
+        label = f"{hours / 24:.0f}d ago"
+    return jsonify({"hours": round(hours, 1), "label": label})
+
 
 @app.route("/api/today")
 def api_today():

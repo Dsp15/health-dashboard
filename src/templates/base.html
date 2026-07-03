@@ -26,6 +26,7 @@
                 <span class="sync-dot" id="syncDot"></span>
                 <span class="sync-label" id="syncLabel">Connecting...</span>
             </div>
+            <span class="sync-age" id="syncAge" title="Last data sync"></span>
             <button class="sync-btn" id="syncBtn" onclick="requestSync()">
                 Sync Now
             </button>
@@ -65,7 +66,8 @@
 
         socket.on("sync_complete", (data) => {
             if (data.success) {
-                setSyncStatus("connected", "Just synced ✓");
+                setSyncStatus("connected", "Live");
+                updateSyncAge();
                 // Reload charts without refreshing the page
                 if (typeof loadCharts === "function") loadCharts();
             } else {
@@ -80,11 +82,24 @@
         }
 
         function setSyncStatus(state, label) {
-            const dot   = document.getElementById("syncDot");
-            const text  = document.getElementById("syncLabel");
-            dot.className  = `sync-dot ${state}`;
+            const dot  = document.getElementById("syncDot");
+            const text = document.getElementById("syncLabel");
+            dot.className    = `sync-dot ${state}`;
             text.textContent = label;
         }
+
+        // Show how long ago the last data sync was (e.g. "2h ago")
+        async function updateSyncAge() {
+            try {
+                const data = await fetch("/api/sync_status").then(r => r.json());
+                const el   = document.getElementById("syncAge");
+                if (el) el.textContent = `· data ${data.label}`;
+            } catch (_) {}
+        }
+
+        // Fetch sync age on load, then refresh every 5 minutes
+        updateSyncAge();
+        setInterval(updateSyncAge, 5 * 60 * 1000);
 
         // ── Chart.js Global Defaults ─────────────────────────────────
         // Set dark theme defaults so every chart looks consistent

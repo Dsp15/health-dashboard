@@ -6,3 +6,4 @@ flask>=3.0
 flask-socketio>=5.3
 psycopg2-binary>=2.9
 anthropic>=0.30
+apscheduler>=3.10
