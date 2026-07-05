@@ -29,9 +29,11 @@ Then open: http://localhost:5000
 import atexit
 import json
 import os
+import secrets
 import sys
 import threading
 from datetime import date, datetime, timedelta
+from urllib.parse import urlencode
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -204,6 +206,78 @@ def training():
     return render_template("training.html")
 
 
+# ── Whoop OAuth ────────────────────────────────────────────────────────────────
+# These routes handle Whoop re-authentication when Flask is already running.
+# Without this, the Whoop callback would hit Flask on port 8080 and get a 404.
+
+_whoop_oauth_state = None   # One-time random string to prevent CSRF
+
+@app.route("/whoop/reauth")
+def whoop_reauth():
+    """
+    Redirect the browser to Whoop's login page.
+    Visit http://localhost:8080/whoop/reauth any time your Whoop token expires.
+    """
+    global _whoop_oauth_state
+    _whoop_oauth_state = secrets.token_urlsafe(16)
+
+    params = {
+        "client_id":     os.getenv("WHOOP_CLIENT_ID"),
+        "redirect_uri":  os.getenv("WHOOP_REDIRECT_URI", "http://localhost:8080/callback"),
+        "response_type": "code",
+        "scope":         "read:recovery read:cycles read:sleep read:workout read:profile read:body_measurement offline",
+        "state":         _whoop_oauth_state,
+    }
+    return redirect(f"https://api.prod.whoop.com/oauth/oauth2/auth?{urlencode(params)}")
+
+
+@app.route("/callback")
+def whoop_callback():
+    """
+    Whoop redirects here after the user logs in.
+    We exchange the code for a token and save it — same file whoop_client.py reads.
+    """
+    global _whoop_oauth_state
+    import requests as req
+
+    code  = request.args.get("code")
+    state = request.args.get("state")
+    error = request.args.get("error")
+
+    if error:
+        return f"<h2>Whoop auth error: {error}</h2>", 400
+    if not code:
+        return "<h2>No authorization code received from Whoop.</h2>", 400
+
+    # Exchange the code for a token
+    try:
+        resp = req.post("https://api.prod.whoop.com/oauth/oauth2/token", data={
+            "client_id":     os.getenv("WHOOP_CLIENT_ID"),
+            "client_secret": os.getenv("WHOOP_CLIENT_SECRET"),
+            "code":          code,
+            "redirect_uri":  os.getenv("WHOOP_REDIRECT_URI", "http://localhost:8080/callback"),
+            "grant_type":    "authorization_code",
+        })
+        resp.raise_for_status()
+        token = resp.json()
+
+        # Save to the same file that whoop_client.py reads
+        token_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".whoop_token.json")
+        with open(token_path, "w") as f:
+            json.dump(token, f, indent=2)
+
+        _whoop_oauth_state = None  # Clear state after successful use
+        return """
+        <html><body style="font-family:sans-serif;max-width:500px;margin:80px auto;text-align:center">
+            <h2>✅ Whoop connected!</h2>
+            <p>Token saved. You can close this tab.</p>
+            <a href="/daily" style="color:#58a6ff">← Back to dashboard</a>
+        </body></html>
+        """
+    except Exception as e:
+        return f"<h2>Token exchange failed: {e}</h2>", 500
+
+
 # ── API: Daily Health ──────────────────────────────────────────────────────────
 
 @app.route("/api/sync_status")
@@ -237,19 +311,16 @@ def api_today():
         ORDER BY start_time DESC
         LIMIT 1
     """)
-    # Garmin secondary data for comparison in stat cards
+    # Garmin secondary data — each metric uses its own latest value independently.
+    # This avoids date-alignment gaps where garmin_daily, garmin_sleep, and garmin_hrv
+    # don't all have entries for the same exact date (e.g. sleep is often one day off).
     garmin = query("""
-        SELECT gd.resting_hr           AS garmin_resting_hr,
-               gd.training_readiness   AS garmin_training_readiness,
-               gs.total_sleep_hours    AS garmin_sleep_hours,
-               gs.sleep_score          AS garmin_sleep_score,
-               gh.last_night_ms        AS garmin_hrv_last_night
-        FROM garmin_daily gd
-        LEFT JOIN garmin_sleep gs ON gs.date = gd.date
-        LEFT JOIN garmin_hrv   gh ON gh.date = gd.date
-        WHERE gd.resting_hr IS NOT NULL
-        ORDER BY gd.date DESC
-        LIMIT 1
+        SELECT
+            (SELECT resting_hr        FROM garmin_daily WHERE resting_hr        IS NOT NULL ORDER BY date DESC LIMIT 1) AS garmin_resting_hr,
+            (SELECT training_readiness FROM garmin_daily WHERE training_readiness IS NOT NULL ORDER BY date DESC LIMIT 1) AS garmin_training_readiness,
+            (SELECT total_sleep_hours  FROM garmin_sleep  WHERE total_sleep_hours  IS NOT NULL ORDER BY date DESC LIMIT 1) AS garmin_sleep_hours,
+            (SELECT sleep_score        FROM garmin_sleep  WHERE sleep_score        IS NOT NULL ORDER BY date DESC LIMIT 1) AS garmin_sleep_score,
+            (SELECT weekly_avg_ms      FROM garmin_hrv    WHERE weekly_avg_ms      IS NOT NULL ORDER BY date DESC LIMIT 1) AS garmin_hrv_last_night
     """)
     return jsonify({
         "recovery": recovery[0] if recovery else {},
@@ -322,17 +393,16 @@ def api_day():
         LIMIT 1
     """, [day])
 
+    # For a specific day, get each Garmin metric independently within ±1 day
+    # to handle date-offset differences between garmin_daily, garmin_sleep, and garmin_hrv.
     garmin = query("""
-        SELECT gd.resting_hr            AS garmin_resting_hr,
-               gd.training_readiness    AS garmin_training_readiness,
-               gs.total_sleep_hours     AS garmin_sleep_hours,
-               gs.sleep_score           AS garmin_sleep_score,
-               gh.last_night_ms         AS garmin_hrv_last_night
-        FROM garmin_daily gd
-        LEFT JOIN garmin_sleep gs ON gs.date = gd.date
-        LEFT JOIN garmin_hrv   gh ON gh.date = gd.date
-        WHERE gd.date = %s
-    """, [day])
+        SELECT
+            (SELECT resting_hr         FROM garmin_daily WHERE date = %s AND resting_hr         IS NOT NULL LIMIT 1) AS garmin_resting_hr,
+            (SELECT training_readiness  FROM garmin_daily WHERE date = %s AND training_readiness  IS NOT NULL LIMIT 1) AS garmin_training_readiness,
+            (SELECT total_sleep_hours   FROM garmin_sleep  WHERE date IN (%s::date, %s::date - 1) AND total_sleep_hours IS NOT NULL ORDER BY date DESC LIMIT 1) AS garmin_sleep_hours,
+            (SELECT sleep_score         FROM garmin_sleep  WHERE date IN (%s::date, %s::date - 1) AND sleep_score        IS NOT NULL ORDER BY date DESC LIMIT 1) AS garmin_sleep_score,
+            (SELECT weekly_avg_ms       FROM garmin_hrv    WHERE date IN (%s::date, %s::date - 1) AND weekly_avg_ms      IS NOT NULL ORDER BY date DESC LIMIT 1) AS garmin_hrv_last_night
+    """, [day, day, day, day, day, day, day, day])
 
     return jsonify({
         "date":     day,

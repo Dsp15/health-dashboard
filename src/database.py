@@ -404,7 +404,12 @@ class Database:
             """, (
                 date_str,
                 sleep_score,
-                round((daily.get("sleepTimeSeconds")  or 0) / 3600, 2),
+                # Total sleep: use Garmin's reported total, or sum stages as fallback.
+                # Use (x or 0) not get(key, 0) — Garmin sometimes returns null explicitly.
+                round(((daily.get("sleepTimeSeconds") or 0) or
+                       ((daily.get("deepSleepSeconds")  or 0) +
+                        (daily.get("lightSleepSeconds") or 0) +
+                        (daily.get("remSleepSeconds")   or 0))) / 3600, 2),
                 round((daily.get("deepSleepSeconds")  or 0) / 3600, 2),
                 round((daily.get("remSleepSeconds")   or 0) / 3600, 2),
                 round((daily.get("lightSleepSeconds") or 0) / 3600, 2),
@@ -422,6 +427,8 @@ class Database:
             summary = hrv_data.get("hrvSummary", {})
             if not summary:
                 return
+            weekly = summary.get("weeklyAvg")
+            last   = summary.get("lastNight")
             self.cursor.execute("""
                 INSERT INTO garmin_hrv
                     (date, weekly_avg_ms, last_night_ms, status, raw)
@@ -433,8 +440,8 @@ class Database:
                     raw           = EXCLUDED.raw
             """, (
                 date_str,
-                summary.get("weeklyAvg"),
-                summary.get("lastNight"),
+                weekly,
+                last,
                 summary.get("status"),
                 psycopg2.extras.Json(hrv_data),
             ))

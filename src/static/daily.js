@@ -188,7 +188,7 @@ function applyDayCards(data, date) {
     if (gslp) gslp.textContent = g.garmin_sleep_hours     ? `Garmin ${g.garmin_sleep_hours.toFixed(1)}h`                        : "";
     if (gsc)  gsc.textContent  = g.garmin_sleep_score     ? `Garmin score ${Math.round(g.garmin_sleep_score)}`                  : "";
     if (gtr)  gtr.textContent  = g.garmin_training_readiness != null ? `Training Readiness ${Math.round(g.garmin_training_readiness)}` : "";
-    if (ghrv) ghrv.textContent = g.garmin_hrv_last_night != null ? `Garmin ${Math.round(g.garmin_hrv_last_night)} ms last night`   : "";
+    if (ghrv) ghrv.textContent = g.garmin_hrv_last_night != null ? `Garmin ${Math.round(g.garmin_hrv_last_night)} ms weekly avg`   : "";
 }
 
 function setCard(id, value, fmt) {
