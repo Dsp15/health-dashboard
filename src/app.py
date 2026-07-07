@@ -78,7 +78,7 @@ def run_background_sync(reason="scheduled"):
         sys.path.insert(0, os.path.dirname(__file__))
         from whoop_client import WhoopClient
         from garmin_client import GarminClient
-        from pipeline import run_whoop_sync, run_garmin_sync
+        from pipeline import run_whoop_sync, run_garmin_sync, run_weather_sync
         from database import Database
 
         start  = (date.today() - timedelta(days=7)).isoformat()
@@ -88,6 +88,7 @@ def run_background_sync(reason="scheduled"):
 
         run_whoop_sync(whoop, db, start=start)
         run_garmin_sync(garmin, db, start=start)
+        run_weather_sync(db, start=start)
         db.close()
 
         print("✅ Auto-sync complete")
@@ -487,6 +488,68 @@ def api_comparison():
     """ % days))
 
 
+# ── API: Weather & Environment ────────────────────────────────────────────────
+
+@app.route("/api/weather")
+def api_weather():
+    """
+    Environmental data joined with health metrics for correlation analysis.
+
+    Returns daily weather (temp, humidity, UV, precipitation) and air quality
+    (PM2.5) alongside Whoop recovery score, HRV, and sleep — so the frontend
+    can chart how environmental conditions relate to how Dan feels.
+
+    This tests the hypothesis: do high-allergy / high-pollution days
+    predict lower recovery scores?
+    """
+    days = int(request.args.get("days", 90))
+    return jsonify(query("""
+        SELECT
+            w.date,
+            -- Weather
+            ROUND(w.temp_max::numeric, 1)     AS temp_max,
+            ROUND(w.temp_min::numeric, 1)     AS temp_min,
+            ROUND(w.temp_mean::numeric, 1)    AS temp_mean,
+            ROUND(w.humidity::numeric, 1)     AS humidity,
+            ROUND(w.precipitation::numeric, 2) AS precipitation,
+            ROUND(w.uv_index::numeric, 1)     AS uv_index,
+            w.weather_code,
+            -- Air quality
+            ROUND(w.pm25::numeric, 1)         AS pm25,
+            ROUND(w.pm10::numeric, 1)         AS pm10,
+            w.aqi_category,
+            -- Health (Whoop)
+            r.recovery_score,
+            r.hrv_rmssd,
+            r.resting_hr,
+            s.sleep_performance_pct,
+            s.total_in_bed_hours
+        FROM weather_daily w
+        LEFT JOIN whoop_recovery r
+            ON r.created_at::date = w.date
+        LEFT JOIN whoop_sleep s
+            ON s.start_time::date = w.date
+            AND s.is_nap = false
+        WHERE w.date >= CURRENT_DATE - INTERVAL '%s days'
+          AND w.temp_mean IS NOT NULL
+        ORDER BY w.date ASC
+    """ % days))
+
+
+@app.route("/api/weather/today")
+def api_weather_today():
+    """Today's weather conditions for the stat cards."""
+    rows = query("""
+        SELECT temp_max, temp_min, temp_mean, humidity,
+               precipitation, uv_index, weather_code, pm25, aqi_category
+        FROM weather_daily
+        WHERE temp_mean IS NOT NULL
+        ORDER BY date DESC
+        LIMIT 1
+    """)
+    return jsonify(rows[0] if rows else {})
+
+
 # ── API: Training ──────────────────────────────────────────────────────────────
 
 @app.route("/api/activities")
@@ -781,7 +844,7 @@ def handle_sync():
         sys.path.insert(0, os.path.dirname(__file__))
         from whoop_client import WhoopClient
         from garmin_client import GarminClient
-        from pipeline import run_whoop_sync, run_garmin_sync
+        from pipeline import run_whoop_sync, run_garmin_sync, run_weather_sync
         from database import Database
 
         start  = (date.today() - timedelta(days=7)).isoformat()

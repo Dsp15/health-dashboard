@@ -28,6 +28,7 @@ from datetime import date, datetime, timedelta
 
 from whoop_client import WhoopClient
 from garmin_client import GarminClient
+from weather_client import get_weather_range, get_air_quality_range
 from database import Database
 
 
@@ -110,60 +111,67 @@ def run_garmin_sync(garmin: GarminClient, db: Database, start: str):
     print(f"  Garmin daily: {day_count} days processed")
 
 
+def run_weather_sync(db: Database, start: str):
+    """
+    Pull weather and air quality data for a date range and store it.
+
+    Uses Open-Meteo (free, no API key). Automatically handles the split
+    between historical archive data and recent forecast data.
+    """
+    print(f"\n── Weather sync (from {start}) ──────────────────────────────")
+    today = date.today().isoformat()
+
+    print("  Fetching weather data...")
+    weather = get_weather_range(start, today)
+    if weather:
+        db.upsert_weather(weather)
+
+    print("  Fetching air quality data...")
+    air_quality = get_air_quality_range(start, today)
+    if air_quality:
+        db.upsert_air_quality(air_quality)
+
+
 def main():
     # ── Parse command-line arguments ─────────────────────────────────
-    # This lets you run: python src/pipeline.py --full
-    # for a full historical backfill on the first run.
     parser = argparse.ArgumentParser(description="Health Dashboard ETL Pipeline")
-    parser.add_argument(
-        "--full",
-        action="store_true",
-        help="Pull all historical data (use on first run)"
-    )
-    parser.add_argument(
-        "--garmin-only",
-        action="store_true",
-        help="Only sync Garmin data (skips Whoop)"
-    )
-    parser.add_argument(
-        "--whoop-only",
-        action="store_true",
-        help="Only sync Whoop data (skips Garmin)"
-    )
+    parser.add_argument("--full",         action="store_true", help="Pull all historical data")
+    parser.add_argument("--garmin-only",  action="store_true", help="Only sync Garmin data")
+    parser.add_argument("--whoop-only",   action="store_true", help="Only sync Whoop data")
+    parser.add_argument("--weather-only", action="store_true", help="Only sync weather data")
     args = parser.parse_args()
 
     # ── Date range ───────────────────────────────────────────────────
     if args.full:
-        # Pull all data since we started wearing these devices
-        whoop_start  = "2025-05-01"   # When Dan got his Whoop
-        garmin_start = "2026-04-01"   # When Dan got his Garmin
+        whoop_start   = "2025-05-01"   # When Dan got his Whoop
+        garmin_start  = "2026-04-01"   # When Dan got his Garmin
+        weather_start = "2026-04-01"   # Match Garmin start for correlation
         print("🔄 Running FULL historical backfill...")
     else:
-        # Incremental: last 7 days (catches any late-scoring records too)
-        whoop_start  = (date.today() - timedelta(days=7)).isoformat()
-        garmin_start = (date.today() - timedelta(days=7)).isoformat()
+        whoop_start   = (date.today() - timedelta(days=7)).isoformat()
+        garmin_start  = (date.today() - timedelta(days=7)).isoformat()
+        weather_start = (date.today() - timedelta(days=7)).isoformat()
         print("🔄 Running incremental sync (last 7 days)...")
 
     # ── Connect ──────────────────────────────────────────────────────
-    db     = Database()
-    whoop  = WhoopClient()
-    garmin = GarminClient()
-
-    # ── Make sure tables exist ───────────────────────────────────────
+    db = Database()
     db.create_tables()
 
     # ── Run syncs ────────────────────────────────────────────────────
-    if not args.garmin_only:
-        run_whoop_sync(whoop, db, start=whoop_start)
-    if not args.whoop_only:
-        run_garmin_sync(garmin, db, start=garmin_start)
+    if args.weather_only:
+        run_weather_sync(db, start=weather_start)
+    else:
+        if not args.garmin_only:
+            whoop  = WhoopClient()
+            run_whoop_sync(whoop, db, start=whoop_start)
+        if not args.whoop_only:
+            garmin = GarminClient()
+            run_garmin_sync(garmin, db, start=garmin_start)
+        run_weather_sync(db, start=weather_start)
 
     # ── Done ─────────────────────────────────────────────────────────
     db.close()
     print("\n✅ Pipeline complete!")
-    print("\nTo explore your data, open psql and run:")
-    print("  psql health_dashboard")
-    print("  SELECT date, recovery_score, hrv_rmssd, resting_hr FROM whoop_recovery ORDER BY date DESC LIMIT 10;")
 
 
 if __name__ == "__main__":

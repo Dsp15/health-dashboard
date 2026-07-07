@@ -205,6 +205,24 @@ class Database:
             );
         """)
 
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS weather_daily (
+                id              SERIAL PRIMARY KEY,
+                date            DATE UNIQUE,
+                temp_max        FLOAT,
+                temp_min        FLOAT,
+                temp_mean       FLOAT,
+                humidity        FLOAT,
+                precipitation   FLOAT,
+                wind_speed      FLOAT,
+                uv_index        FLOAT,
+                weather_code    INTEGER,
+                pm25            FLOAT,
+                pm10            FLOAT,
+                aqi_category    TEXT
+            );
+        """)
+
         print("All tables created successfully.\n")
 
     # ── Upsert Methods ─────────────────────────────────────────────────────────
@@ -447,6 +465,64 @@ class Database:
             ))
         except Exception as e:
             print(f"  Error inserting Garmin HRV {date_str}: {e}")
+
+    def upsert_weather(self, records: list):
+        """Save weather records (temperature, humidity, UV, precipitation) for a date range."""
+        count = 0
+        for r in records:
+            try:
+                self.cursor.execute("""
+                    INSERT INTO weather_daily
+                        (date, temp_max, temp_min, temp_mean, humidity,
+                         precipitation, wind_speed, uv_index, weather_code)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (date) DO UPDATE SET
+                        temp_max      = EXCLUDED.temp_max,
+                        temp_min      = EXCLUDED.temp_min,
+                        temp_mean     = EXCLUDED.temp_mean,
+                        humidity      = EXCLUDED.humidity,
+                        precipitation = EXCLUDED.precipitation,
+                        wind_speed    = EXCLUDED.wind_speed,
+                        uv_index      = EXCLUDED.uv_index,
+                        weather_code  = EXCLUDED.weather_code
+                """, (
+                    r["date"],
+                    r.get("temp_max"),
+                    r.get("temp_min"),
+                    r.get("temp_mean"),
+                    r.get("humidity"),
+                    r.get("precipitation"),
+                    r.get("wind_speed"),
+                    r.get("uv_index"),
+                    r.get("weather_code"),
+                ))
+                count += 1
+            except Exception as e:
+                print(f"  Error inserting weather {r.get('date')}: {e}")
+        print(f"  Weather: {count} days upserted")
+
+    def upsert_air_quality(self, records: list):
+        """Save air quality records (PM2.5, PM10) for a date range."""
+        count = 0
+        for r in records:
+            try:
+                self.cursor.execute("""
+                    INSERT INTO weather_daily (date, pm25, pm10, aqi_category)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (date) DO UPDATE SET
+                        pm25         = EXCLUDED.pm25,
+                        pm10         = EXCLUDED.pm10,
+                        aqi_category = EXCLUDED.aqi_category
+                """, (
+                    r["date"],
+                    r.get("pm25"),
+                    r.get("pm10"),
+                    r.get("aqi_category"),
+                ))
+                count += 1
+            except Exception as e:
+                print(f"  Error inserting air quality {r.get('date')}: {e}")
+        print(f"  Air quality: {count} days upserted")
 
     def close(self):
         """Close the database connection."""

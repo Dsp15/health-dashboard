@@ -215,6 +215,72 @@
 
 </section>
 
+<!-- ── Environmental Impact ────────────────────────────────────────── -->
+<div class="section-header" style="margin-top: 32px;">
+    <h2 class="section-title">🌤️ Environmental Impact</h2>
+    <span class="section-sub">Does air quality or weather affect your recovery? Testing your allergy hypothesis.</span>
+</div>
+
+<!-- Today's environmental stat cards -->
+<div class="stat-grid" id="env-stat-grid" style="margin-bottom: 24px;">
+    <div class="stat-card">
+        <div class="stat-label">Temperature</div>
+        <div class="stat-value" id="env-temp">--</div>
+        <div class="stat-sub" id="env-temp-range"></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Humidity</div>
+        <div class="stat-value" id="env-humidity">--</div>
+        <div class="stat-sub">relative %</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Air Quality (PM2.5)</div>
+        <div class="stat-value" id="env-pm25">--</div>
+        <div class="stat-sub" id="env-aqi-label"></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">UV Index</div>
+        <div class="stat-value" id="env-uv">--</div>
+        <div class="stat-sub" id="env-uv-label"></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Precipitation</div>
+        <div class="stat-value" id="env-precip">--</div>
+        <div class="stat-sub">mm today</div>
+    </div>
+</div>
+
+<section class="chart-grid">
+
+    <div class="chart-card chart-wide">
+        <div class="chart-header">
+            <h2 class="chart-title">Recovery vs Air Quality (PM2.5)</h2>
+            <div class="chart-legend">
+                <span class="legend-dot green"></span> Recovery %
+                <span class="legend-dot yellow"></span> PM2.5 µg/m³
+            </div>
+        </div>
+        <canvas id="chartRecoveryVsPM25"></canvas>
+    </div>
+
+    <div class="chart-card">
+        <div class="chart-header">
+            <h2 class="chart-title">Recovery vs Temperature</h2>
+            <span class="chart-sub">Do hot days tank your score?</span>
+        </div>
+        <canvas id="chartRecoveryVsTemp"></canvas>
+    </div>
+
+    <div class="chart-card">
+        <div class="chart-header">
+            <h2 class="chart-title">Recovery vs Humidity</h2>
+            <span class="chart-sub">DC summers are brutal</span>
+        </div>
+        <canvas id="chartRecoveryVsHumidity"></canvas>
+    </div>
+
+</section>
+
 {% endblock %}
 
 {% block scripts %}

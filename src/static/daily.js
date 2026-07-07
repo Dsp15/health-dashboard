@@ -43,12 +43,14 @@ function setDays(days) {
 async function loadCharts() {
     try {
         // Fetch all data sources in parallel
-        const [todayData, recoveryData, sleepData, trendsData, compData] = await Promise.all([
+        const [todayData, recoveryData, sleepData, trendsData, compData, weatherData, weatherToday] = await Promise.all([
             fetch("/api/today").then(r => r.json()),
             fetch(`/api/recovery?days=${currentDays}`).then(r => r.json()),
             fetch(`/api/sleep?days=${currentDays}`).then(r => r.json()),
             fetch("/api/trends").then(r => r.json()),
             fetch(`/api/comparison?days=${currentDays}`).then(r => r.json()),
+            fetch(`/api/weather?days=${currentDays}`).then(r => r.json()),
+            fetch("/api/weather/today").then(r => r.json()),
         ]);
 
         // ── Whoop charts ──────────────────────────────────────────
@@ -66,6 +68,12 @@ async function loadCharts() {
         renderReadinessChart(compData);
         renderHRVCompareChart(compData);
         renderSleepCompareChart(compData);
+
+        // ── Environmental impact ──────────────────────────────────
+        renderEnvStatCards(weatherToday);
+        renderRecoveryVsPM25Chart(weatherData);
+        renderRecoveryVsTempScatter(weatherData);
+        renderRecoveryVsHumidityScatter(weatherData);
 
     } catch (err) {
         console.error("Failed to load charts:", err);
@@ -750,6 +758,190 @@ async function loadAiSummary(force = false) {
     } finally {
         if (btn) { btn.classList.remove("spinning"); btn.disabled = false; }
     }
+}
+
+// ── Environmental Impact ──────────────────────────────────────────────────────
+
+/**
+ * Populate today's environmental stat cards (temperature, humidity, PM2.5, UV).
+ */
+function renderEnvStatCards(w) {
+    if (!w || !w.temp_mean) return;
+
+    const tempEl   = document.getElementById("env-temp");
+    const rangeEl  = document.getElementById("env-temp-range");
+    const humEl    = document.getElementById("env-humidity");
+    const pm25El   = document.getElementById("env-pm25");
+    const aqiEl    = document.getElementById("env-aqi-label");
+    const uvEl     = document.getElementById("env-uv");
+    const uvLblEl  = document.getElementById("env-uv-label");
+    const precipEl = document.getElementById("env-precip");
+
+    if (tempEl)   tempEl.textContent  = Math.round(w.temp_mean) + "°F";
+    if (rangeEl)  rangeEl.textContent = `${Math.round(w.temp_min)}° – ${Math.round(w.temp_max)}°F`;
+    if (humEl)    humEl.textContent   = Math.round(w.humidity) + "%";
+
+    if (pm25El) {
+        pm25El.textContent = w.pm25 != null ? w.pm25.toFixed(1) : "--";
+        // Color by EPA AQI category
+        if (w.pm25 <= 12)       pm25El.className = "stat-value green";
+        else if (w.pm25 <= 35)  pm25El.className = "stat-value yellow";
+        else                     pm25El.className = "stat-value red";
+    }
+    if (aqiEl)    aqiEl.textContent   = w.aqi_category || "µg/m³";
+
+    if (uvEl) {
+        uvEl.textContent = w.uv_index != null ? Math.round(w.uv_index) : "--";
+        if (w.uv_index <= 2)      uvEl.className = "stat-value green";
+        else if (w.uv_index <= 5) uvEl.className = "stat-value yellow";
+        else                       uvEl.className = "stat-value red";
+    }
+    if (uvLblEl) {
+        const labels = ["", "Low", "Low", "Moderate", "Moderate", "Moderate",
+                        "High", "High", "Very High", "Very High", "Extreme"];
+        uvLblEl.textContent = labels[Math.min(Math.round(w.uv_index || 0), 10)] || "UV";
+    }
+    if (precipEl) precipEl.textContent = w.precipitation != null ? w.precipitation.toFixed(1) + " mm" : "0 mm";
+}
+
+/**
+ * Dual-axis chart: Recovery % as bars, PM2.5 as a line overlay.
+ * This is the core "allergy hypothesis" chart — do PM2.5 spikes align with
+ * recovery dips?
+ */
+function renderRecoveryVsPM25Chart(data) {
+    const withData = data.filter(d => d.recovery_score != null || d.pm25 != null);
+    if (withData.length === 0) return;
+
+    renderChart("chartRecoveryVsPM25", {
+        type: "bar",
+        data: {
+            labels: withData.map(d => fmtDate(d.date)),
+            datasets: [
+                {
+                    label: "Recovery %",
+                    data: withData.map(d => d.recovery_score),
+                    backgroundColor: withData.map(d => recoveryColor(d.recovery_score) + "cc"),
+                    borderRadius: 3,
+                    borderSkipped: false,
+                    yAxisID: "yRecovery",
+                    order: 2,
+                },
+                {
+                    label: "PM2.5 µg/m³",
+                    data: withData.map(d => d.pm25),
+                    type: "line",
+                    borderColor: "#d29922",
+                    backgroundColor: "rgba(210,153,34,0.1)",
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    tension: 0.3,
+                    yAxisID: "yPM25",
+                    order: 1,
+                },
+            ]
+        },
+        options: {
+            ...baseOptions(),
+            scales: {
+                x: { ...xAxis(), ticks: { maxTicksLimit: 12 } },
+                yRecovery: {
+                    ...yAxis(),
+                    position: "left",
+                    min: 0, max: 100,
+                    ticks: { callback: v => v + "%" },
+                    title: { display: true, text: "Recovery %", color: "#8b949e" },
+                },
+                yPM25: {
+                    ...yAxis(),
+                    position: "right",
+                    min: 0,
+                    grid: { drawOnChartArea: false },
+                    ticks: { callback: v => v + " µg/m³" },
+                    title: { display: true, text: "PM2.5", color: "#d29922" },
+                },
+            },
+            plugins: { ...basePlugins(), legend: { display: true, labels: { color: "#8b949e", boxWidth: 12 } } }
+        }
+    });
+}
+
+/**
+ * Scatter: Temperature (X) vs Recovery (Y).
+ * Each dot = one day. Reveals if hot days predict lower recovery.
+ */
+function renderRecoveryVsTempScatter(data) {
+    const points = data.filter(d => d.temp_mean != null && d.recovery_score != null)
+        .map(d => ({ x: d.temp_mean, y: d.recovery_score, date: d.date }));
+    if (points.length === 0) return;
+
+    renderChart("chartRecoveryVsTemp", {
+        type: "scatter",
+        data: {
+            datasets: [{
+                label: "Days",
+                data: points,
+                backgroundColor: points.map(p => recoveryColor(p.y) + "cc"),
+                pointRadius: 5,
+                pointHoverRadius: 7,
+            }]
+        },
+        options: {
+            ...baseOptions(),
+            interaction: { mode: "nearest", intersect: true },
+            scales: {
+                x: { ...xAxis(), title: { display: true, text: "Avg Temp (°F)", color: "#8b949e" } },
+                y: {
+                    ...yAxis(), min: 0, max: 100,
+                    title: { display: true, text: "Recovery %", color: "#8b949e" },
+                    ticks: { callback: v => v + "%" },
+                }
+            },
+            plugins: { ...basePlugins(), tooltip: { callbacks: {
+                label: ctx => [`${fmtDate(ctx.raw.date)}`, `Temp: ${ctx.raw.x}°F`, `Recovery: ${Math.round(ctx.raw.y)}%`]
+            }}}
+        }
+    });
+}
+
+/**
+ * Scatter: Humidity (X) vs Recovery (Y).
+ * High humidity is hard on the body — especially relevant for DC summers.
+ */
+function renderRecoveryVsHumidityScatter(data) {
+    const points = data.filter(d => d.humidity != null && d.recovery_score != null)
+        .map(d => ({ x: d.humidity, y: d.recovery_score, date: d.date }));
+    if (points.length === 0) return;
+
+    renderChart("chartRecoveryVsHumidity", {
+        type: "scatter",
+        data: {
+            datasets: [{
+                label: "Days",
+                data: points,
+                backgroundColor: points.map(p => recoveryColor(p.y) + "cc"),
+                pointRadius: 5,
+                pointHoverRadius: 7,
+            }]
+        },
+        options: {
+            ...baseOptions(),
+            interaction: { mode: "nearest", intersect: true },
+            scales: {
+                x: { ...xAxis(), title: { display: true, text: "Humidity (%)", color: "#8b949e" },
+                     ticks: { callback: v => v + "%" } },
+                y: {
+                    ...yAxis(), min: 0, max: 100,
+                    title: { display: true, text: "Recovery %", color: "#8b949e" },
+                    ticks: { callback: v => v + "%" },
+                }
+            },
+            plugins: { ...basePlugins(), tooltip: { callbacks: {
+                label: ctx => [`${fmtDate(ctx.raw.date)}`, `Humidity: ${ctx.raw.x}%`, `Recovery: ${Math.round(ctx.raw.y)}%`]
+            }}}
+        }
+    });
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
