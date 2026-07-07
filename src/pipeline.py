@@ -28,7 +28,7 @@ from datetime import date, datetime, timedelta
 
 from whoop_client import WhoopClient
 from garmin_client import GarminClient
-from weather_client import get_weather_range, get_air_quality_range
+from weather_client import get_weather_range, get_air_quality_range, get_pollen_range
 from database import Database
 
 
@@ -130,6 +130,11 @@ def run_weather_sync(db: Database, start: str):
     air_quality = get_air_quality_range(start, today)
     if air_quality:
         db.upsert_air_quality(air_quality)
+
+    print("  Fetching pollen data (Tomorrow.io)...")
+    pollen = get_pollen_range(start, today)
+    if pollen:
+        db.upsert_pollen(pollen)
 
 
 def main():

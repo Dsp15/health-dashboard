@@ -40,6 +40,8 @@ NAME = os.getenv("LOCATION_NAME", "Ballston, VA")
 WEATHER_ARCHIVE_URL   = "https://archive-api.open-meteo.com/v1/archive"
 AIR_QUALITY_URL       = "https://air-quality-api.open-meteo.com/v1/air-quality"
 WEATHER_FORECAST_URL  = "https://api.open-meteo.com/v1/forecast"   # recent days only
+TOMORROW_API_URL      = "https://api.tomorrow.io/v4/weather/forecast"
+TOMORROW_API_KEY      = os.getenv("TOMORROW_API_KEY")
 
 
 # ── Weather ────────────────────────────────────────────────────────────────────
@@ -222,6 +224,77 @@ def _pm25_category(pm25: float | None) -> str | None:
     if pm25 <= 150.4:
         return "Unhealthy"
     return "Very Unhealthy"
+
+
+# ── Pollen (Tomorrow.io) ───────────────────────────────────────────────────────
+
+def get_pollen_range(start: str, end: str) -> list[dict]:
+    """
+    Fetch daily pollen indices from Tomorrow.io for a date range.
+
+    Tomorrow.io provides US pollen data (unlike Open-Meteo, which is Europe-only).
+    The free tier allows 500 calls/day, no credit card required.
+
+    Fields returned:
+      grassIndex     — overall grass pollen (0–5 scale)
+      treeIndex      — overall tree pollen (0–5 scale)
+      weedIndex      — overall weed pollen (0–5 scale)
+      weedRagweedIndex — ragweed specifically (0–5 scale, US only)
+
+    Index scale: 0=None, 1=Very Low, 2=Low, 3=Medium, 4=High, 5=Very High
+
+    Limitation: Tomorrow.io free tier only returns ~7 days of historical data.
+    Run the pipeline daily to accumulate a growing correlation dataset.
+
+    Args:
+        start: "YYYY-MM-DD"
+        end:   "YYYY-MM-DD"
+
+    Returns:
+        List of dicts with keys: date, grass_pollen, tree_pollen,
+        weed_pollen, ragweed_pollen
+    """
+    if not TOMORROW_API_KEY:
+        print("  Skipping pollen: TOMORROW_API_KEY not set in .env")
+        return []
+
+    params = {
+        "location":  f"{LAT},{LON}",
+        "fields":    "grassIndex,treeIndex,weedIndex,weedRagweedIndex",
+        "timesteps": "1d",
+        "timezone":  "America/New_York",
+        "apikey":    TOMORROW_API_KEY,
+    }
+    try:
+        resp = requests.get(TOMORROW_API_URL, params=params, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        print(f"  Pollen fetch failed: {e}")
+        return []
+
+    records = []
+    for day in data.get("timelines", {}).get("daily", []):
+        d = day.get("time", "")[:10]  # "2026-07-05T06:00:00Z" → "2026-07-05"
+        if not (start <= d <= end):
+            continue
+        v = day.get("values", {})
+        records.append({
+            "date":           d,
+            "grass_pollen":   v.get("grassIndex"),
+            "tree_pollen":    v.get("treeIndex"),
+            "weed_pollen":    v.get("weedIndex"),
+            "ragweed_pollen": v.get("weedRagweedIndex"),
+        })
+
+    return sorted(records, key=lambda r: r["date"])
+
+
+def pollen_label(index: int | None) -> str:
+    """Convert Tomorrow.io pollen index (0–5) to text label."""
+    if index is None:
+        return "No data"
+    return {0: "None", 1: "Very Low", 2: "Low", 3: "Medium", 4: "High", 5: "Very High"}.get(index, "Unknown")
 
 
 # ── Utilities ──────────────────────────────────────────────────────────────────

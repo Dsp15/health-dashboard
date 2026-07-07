@@ -802,6 +802,26 @@ function renderEnvStatCards(w) {
         uvLblEl.textContent = labels[Math.min(Math.round(w.uv_index || 0), 10)] || "UV";
     }
     if (precipEl) precipEl.textContent = w.precipitation != null ? w.precipitation.toFixed(1) + " mm" : "0 mm";
+
+    // ── Pollen cards ────────────────────────────────────────────────
+    const pollenLabels = ["None", "Very Low", "Low", "Medium", "High", "Very High"];
+    const pollenColor  = idx => idx == null ? "" : idx <= 1 ? "stat-value green" : idx <= 3 ? "stat-value yellow" : "stat-value red";
+
+    const pollenFields = [
+        { id: "env-grass-pollen",   key: "grass_pollen",   lbl: "env-grass-pollen-label" },
+        { id: "env-ragweed-pollen", key: "ragweed_pollen", lbl: "env-ragweed-pollen-label" },
+        { id: "env-tree-pollen",    key: "tree_pollen",    lbl: "env-tree-pollen-label" },
+    ];
+    for (const { id, key, lbl } of pollenFields) {
+        const el    = document.getElementById(id);
+        const lblEl = document.getElementById(lbl);
+        const val   = w[key];
+        if (el) {
+            el.textContent = val != null ? val : "--";
+            el.className   = val != null ? pollenColor(val) : "stat-value";
+        }
+        if (lblEl) lblEl.textContent = val != null ? pollenLabels[val] || "Unknown" : "No data yet";
+    }
 }
 
 /**

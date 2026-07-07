@@ -518,6 +518,11 @@ def api_weather():
             ROUND(w.pm25::numeric, 1)         AS pm25,
             ROUND(w.pm10::numeric, 1)         AS pm10,
             w.aqi_category,
+            -- Pollen (Tomorrow.io)
+            w.grass_pollen,
+            w.tree_pollen,
+            w.weed_pollen,
+            w.ragweed_pollen,
             -- Health (Whoop)
             r.recovery_score,
             r.hrv_rmssd,
@@ -541,11 +546,14 @@ def api_weather_today():
     """Today's weather conditions for the stat cards."""
     rows = query("""
         SELECT temp_max, temp_min, temp_mean, humidity,
-               precipitation, uv_index, weather_code, pm25, aqi_category
+               precipitation, uv_index, weather_code, pm25, aqi_category,
+               grass_pollen, tree_pollen, weed_pollen, ragweed_pollen
         FROM weather_daily
-        WHERE temp_mean IS NOT NULL
-        ORDER BY date DESC
-        LIMIT 1
+        WHERE date = (
+            SELECT date FROM weather_daily
+            WHERE temp_mean IS NOT NULL
+            ORDER BY date DESC LIMIT 1
+        )
     """)
     return jsonify(rows[0] if rows else {})
 

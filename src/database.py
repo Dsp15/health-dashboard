@@ -219,9 +219,19 @@ class Database:
                 weather_code    INTEGER,
                 pm25            FLOAT,
                 pm10            FLOAT,
-                aqi_category    TEXT
+                aqi_category    TEXT,
+                grass_pollen    INTEGER,
+                tree_pollen     INTEGER,
+                weed_pollen     INTEGER,
+                ragweed_pollen  INTEGER
             );
         """)
+
+        # Add pollen columns if upgrading from older schema (safe to run repeatedly)
+        for col in ["grass_pollen", "tree_pollen", "weed_pollen", "ragweed_pollen"]:
+            self.cursor.execute(f"""
+                ALTER TABLE weather_daily ADD COLUMN IF NOT EXISTS {col} INTEGER;
+            """)
 
         print("All tables created successfully.\n")
 
@@ -523,6 +533,31 @@ class Database:
             except Exception as e:
                 print(f"  Error inserting air quality {r.get('date')}: {e}")
         print(f"  Air quality: {count} days upserted")
+
+    def upsert_pollen(self, records: list):
+        """Save Tomorrow.io pollen index records (grass, tree, weed, ragweed) for a date range."""
+        count = 0
+        for r in records:
+            try:
+                self.cursor.execute("""
+                    INSERT INTO weather_daily (date, grass_pollen, tree_pollen, weed_pollen, ragweed_pollen)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (date) DO UPDATE SET
+                        grass_pollen   = EXCLUDED.grass_pollen,
+                        tree_pollen    = EXCLUDED.tree_pollen,
+                        weed_pollen    = EXCLUDED.weed_pollen,
+                        ragweed_pollen = EXCLUDED.ragweed_pollen
+                """, (
+                    r["date"],
+                    r.get("grass_pollen"),
+                    r.get("tree_pollen"),
+                    r.get("weed_pollen"),
+                    r.get("ragweed_pollen"),
+                ))
+                count += 1
+            except Exception as e:
+                print(f"  Error inserting pollen {r.get('date')}: {e}")
+        print(f"  Pollen: {count} days upserted")
 
     def close(self):
         """Close the database connection."""
