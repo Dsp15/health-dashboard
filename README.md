@@ -6,6 +6,10 @@ Built to solve a real problem: Whoop and Garmin each have their own apps, but ne
 
 ---
 
+![Health Dashboard](dashboard%20photo%20july%207.jpg)
+
+---
+
 ## What It Does
 
 **Daily Health page**
